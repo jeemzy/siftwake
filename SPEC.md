@@ -12,11 +12,11 @@ I develop on Windows and have a physical iPhone. Everyday changes to materials, 
 
 Build Siftwake as an Expo app with a touch canvas, a fixed-step simulation, and a local material editor. Launch it in Expo Go from a Windows development server. The player can paint, pause, advance one tick, build chambers, place air devices, and save a world together with the materials it uses. The play screen has no advertising, purchases, or game-account prompt.
 
-Sandboxels establishes that this kind of game can run client-side. Its public source combines JavaScript material behavior with browser rendering and controls. Use it as a reference for how materials interact. Siftwake will use original material definitions, interface, and assets, and established grid-based simulation methods. Its rendering surface is native Skia. [Sandboxels source](https://github.com/R74nCom/sandboxels/blob/main/index.html) · [Upstream license](https://github.com/R74nCom/sandboxels/blob/main/license.txt)
+Sandboxels establishes that this kind of game can run client-side. Its public source combines JavaScript material behavior with browser rendering and controls. Use it as a reference for how materials interact. Use established methods and evaluate suitable source code for license compatibility and attribution before integrating it. Tune behavior against the agreed experiments. Its rendering surface is native Skia. [Sandboxels source](https://github.com/R74nCom/sandboxels/blob/main/index.html) · [Upstream license](https://github.com/R74nCom/sandboxels/blob/main/license.txt)
 
 ## User Stories
 
-1. As a player, I want to open a blank portrait world and start drawing with sand selected, so that I can play on my first launch.
+1. As a player, I want to open a comparison tunnel or choose a blank portrait world and start drawing, so that I can play on my first launch.
 2. As a player, I want to change materials and brush sizes within thumb reach, so that I can pour a broad stream or draw a narrow channel.
 3. As a player, I want a fast swipe to leave a continuous stroke, so that gaps in touch sampling do not spoil my drawings.
 4. As a player, I want to erase a small area without resetting the world, so that I can repair a chamber during an experiment.
@@ -45,7 +45,7 @@ Sandboxels establishes that this kind of game can run client-side. Its public so
 
 - Use Expo, React Native, and TypeScript. React Native owns the toolbar, material palette, and editor. Draw the 160 × 240 portrait world as one nearest-neighbor pixel image on a Skia canvas. Translate touches into simulation coordinates after accounting for scaling and layout. Keep the pixel buffer and simulation arrays outside React component state. Expo Go includes the Skia and SQLite libraries required by this design. [Expo Skia](https://docs.expo.dev/versions/latest/sdk/skia/) · [Expo SQLite](https://docs.expo.dev/versions/latest/sdk/sqlite/)
 - Run the simulation at 30 fixed ticks per second. Screen refresh and touch event frequency must not change the physics. Interpolate between touch samples, clip strokes at the world boundary, and keep toolbar touches out of the canvas. Bound catch-up work after a stall. Returning from the background resumes from the saved tick without simulating the elapsed absence.
-- On first launch start an empty, running world with sand selected. Pause freezes materials and air together. Drawing while paused updates the scene immediately. Step advances the entire world exactly once and leaves it paused. App controls expose accessible names, selection state, and stable identifiers for device automation.
+- On first launch show a resettable comparison tunnel with sand selected and a blank canvas option. Reset restores the seed and scene. Pause freezes materials and air together. Drawing while paused updates the scene immediately. Step advances the entire world exactly once and leaves it paused. App controls expose accessible names, selection state, and stable identifiers for device automation.
 
 ### Materials and reactions
 
@@ -55,9 +55,11 @@ Sandboxels establishes that this kind of game can run client-side. Its public so
 | Water | Falls, spreads sideways across a floor, and collects in low areas. |
 | Smoke | Rises in still air and follows an imposed current around obstacles. |
 | Stone | Stays where painted and blocks material movement at single-cell resolution. |
+| Gravel | Heavy loose grains roll at higher wind speeds than sand. |
+| Wood and flame | A drifting flame can ignite wood. Burning wood supplies more flame and smoke. |
 | Wet sand | Forms when sand touches water. It still falls but spreads less readily than dry sand. |
 
-Store material occupancy in typed arrays keyed by stable material IDs. The movement families available to creators are powder, liquid, gas, and fixed solid. Relative density controls which mobile material can displace another. Equal density alone never triggers a swap. Wind carries gases most readily, biases exposed light grains, and leaves fixed solids in place. Stone supports detailed material structures. The separate **Wall** tool builds airtight partitions at air-grid resolution.
+Store material occupancy in typed arrays keyed by stable material IDs. The movement families available to creators are powder, liquid, gas, and fixed solid. Relative density controls which mobile material can displace another. Equal density alone never triggers a swap. Wind carries smoke and flame readily, shifts exposed sand, and rolls gravel at higher speeds. Packed grains divert air and remain slightly permeable. Stone supports detailed material structures. The separate **Wall** tool builds airtight partitions at air-grid resolution.
 
 Resolve contact reactions against orthogonally adjacent cells. A rule identifies an unordered pair of input materials and one output for each input position. Each output can keep the original, replace it with a named material, or leave the cell empty. The starter rule turns the sand grain into wet sand and consumes its water neighbor. Resolve competing contacts in deterministic order, using the world's seeded generator for tie-breaking where appropriate. A cell can participate in at most one reaction per tick.
 
@@ -68,7 +70,8 @@ Overlay a 40 × 60 air grid on the material world. Each air cell covers 4 × 4 m
 | Tool | Placement and effect |
 | --- | --- |
 | Wall | Snaps to the air grid. A wall tile blocks materials throughout its footprint and seals its air faces. Show the snapped footprint before placement. |
-| Fan | Snaps to an open air tile and applies momentum in one of four cardinal directions. With the Fan tool selected, tap an existing fan to turn it a quarter turn. |
+| Fan | Snaps to an open air tile and applies momentum in one of four cardinal directions. With the Fan tool selected, tap an existing fan to turn it a quarter turn. Adjust fan strength continuously from 0 to 100%. |
+| Wind brush | A directional stroke adds a temporary gust that decays. |
 | Pressure source | Adds air locally each tick, raising pressure in a sealed chamber. |
 | Suction source | Removes air locally each tick, lowering pressure in a sealed chamber. |
 | Eraser | Removes materials under the brush and removes a wall or device at the touched tile. Removing a wall reopens its faces on the next tick. |
@@ -103,10 +106,10 @@ Reopen the last committed world paused. Gameplay and saves operate locally once 
 
 ## Out of Scope
 
-Version one excludes temperature, combustion, heat-driven convection, a full Sandboxels catalog or mod loader, arbitrary user scripts, multiple save slots, cloud sharing, and multiplayer. Packaging a standalone IPA, LiveContainer compatibility, TestFlight, and App Store distribution are separate release work. A simulator matrix and macOS builds on every change are outside the first-version test workflow.
+Version one excludes temperature transport, detailed combustion chemistry, heat-driven convection, a full Sandboxels catalog or mod loader, arbitrary user scripts, multiple save slots, cloud sharing, and multiplayer. Packaging a standalone IPA, LiveContainer compatibility, TestFlight, and App Store distribution are separate release work. A simulator matrix and macOS builds on every change are outside the first-version test workflow.
 
 ## Further Notes
 
 Expo was selected because Expo Go can run the touch interface, Skia renderer, and TypeScript simulation directly on the iPhone during development from Windows. Flutter is also suited to a custom canvas, but choosing it would give up the requested Expo Go workflow. The simulation has no dependency on an Apple UI framework.
 
-Build the smoke passage first. On the iPhone, paint a wall, place smoke, rotate a fan, and watch the plume change direction. Measure the simulation tick and pixel upload separately while drawing. This establishes whether Expo Go can simulate and display the intended world on the target phone. Add the remaining material rules, editor, and durable saves against the same world interface. If device measurements miss the target, use the timing breakdown to identify the expensive operation before reconsidering the framework.
+Build the PC comparison tunnel first. Start Expo Web on Windows using the shared TypeScript simulation and Skia renderer. Compare smoke, flame, sand, and gravel under adjustable wind. Verify pile-induced plume deflection, gust decay, pressure release, and directional ignition with seeded experiments. Exercise the canvas, tools, slider, stepping, and reset in a real browser. Then expand the material catalog, editor and saves and validate the full game on the physical iPhone. [PC milestone](https://github.com/jeemzy/siftwake/issues/2) · [iPhone game](https://github.com/jeemzy/siftwake/issues/1)

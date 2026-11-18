@@ -1,0 +1,7 @@
+node_modules/
+.expo/
+dist/
+public/canvaskit.wasm
+output/
+.playwright-cli/
+*.log
