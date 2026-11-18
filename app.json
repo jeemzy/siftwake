@@ -4,6 +4,9 @@
     "slug": "siftwake",
     "version": "0.1.0",
     "orientation": "portrait",
+    "ios": {
+      "bundleIdentifier": "com.jeemzy.siftwake"
+    },
     "web": {
       "bundler": "metro"
     },
