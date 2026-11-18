@@ -5,3 +5,4 @@ public/canvaskit.wasm
 output/
 .playwright-cli/
 *.log
+vendor/spec-01/registry/hardware/ui/hardware/skin.metro.css

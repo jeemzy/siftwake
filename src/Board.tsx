@@ -148,8 +148,8 @@ const s = StyleSheet.create({
   board: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: '#192422',
-    borderColor: '#36453f',
+    backgroundColor: '#e2e2dd',
+    borderColor: '#b9b9af',
     borderWidth: 1,
     padding: 5,
     borderRadius: 6,
@@ -161,8 +161,8 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 5,
   },
-  scene: { color: '#e1e7d9', fontSize: 13, fontWeight: '700' },
-  tick: { color: '#a6b8ad', fontSize: 12, fontVariant: ['tabular-nums'] },
+  scene: { color: '#1b1b19', fontSize: 13, fontWeight: '700' },
+  tick: { color: '#53534c', fontSize: 12, fontVariant: ['tabular-nums'] },
   stage: {
     flex: 1,
     minHeight: 0,
