@@ -1,0 +1,128 @@
+/* Keep the WKWebView's document flush with its fixed frame on iOS. */
+body:has(.sw-dock, .sw-transport) {
+  margin: 0;
+}
+.sw-dock,
+.sw-transport {
+  --mono: 'Spec Mono', Menlo, monospace !important;
+  box-sizing: border-box;
+}
+.sw-dock *,
+.sw-transport * {
+  box-sizing: border-box;
+}
+.sw-transport {
+  padding: 4px 6px;
+  background: transparent;
+}
+.sw-transport [data-kit='rocker'] {
+  width: 100%;
+}
+.sw-transport [data-kit='rocker-part'] {
+  flex: 1;
+  min-height: 39px;
+  white-space: nowrap;
+}
+.sw-transport [data-kit='rocker-part']:disabled {
+  opacity: 0.45;
+}
+.sw-transport [aria-pressed='true'] {
+  color: #a63716;
+}
+
+.sw-dock {
+  padding: 6px 7px;
+  background: var(--metal);
+  border-radius: 6px;
+  border: 1px solid var(--hair);
+}
+.sw-dock [data-kit='tabs']:not(#_):not(#_) {
+  gap: 5px;
+}
+.sw-dock [data-kit='tabs-list'] {
+  order: 2;
+}
+.sw-dock [data-kit='tab-panel'] {
+  order: 1;
+}
+.sw-setting,
+.sw-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sw-setting {
+  height: 68px;
+  font: 12px var(--mono);
+  color: var(--ink);
+}
+.sw-setting > span:first-child {
+  padding-inline: 2px;
+}
+.sw-setting [role='status'] {
+  margin-left: auto;
+  font-size: 10px;
+}
+.sw-tools {
+  align-items: stretch;
+}
+.sw-tools > [data-kit='button']:not(#_) {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 1px;
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  font-size: clamp(9px, 2.6vw, 12px);
+}
+.sw-tools i {
+  width: 13px;
+  height: 5px;
+  border: 1px solid #0003;
+}
+.sw-setting [data-kit='button']:not(#_) {
+  min-width: 0;
+  min-height: 36px;
+  padding: 3px 9px;
+}
+.sw-setting [data-kit='knob']:not(#_) {
+  display: grid;
+  grid-template-columns: 56px auto auto;
+  grid-template-rows: auto;
+  align-items: center;
+  gap: 4px;
+}
+.sw-setting [data-kit='knob-dial']:not(#_) {
+  width: 54px;
+  height: 54px;
+}
+.sw-setting [data-kit='knob-readout']:not(#_) {
+  width: 3ch;
+}
+.sw-setting [data-kit='knob']::after {
+  content: '%';
+  grid-column: 3;
+  grid-row: 1;
+}
+.sw-setting [data-kit='knob'] [data-kit='label'] {
+  grid-column: 4;
+  grid-row: 1;
+  white-space: nowrap;
+}
+/* Expo DOM embeds its children in a flex row. Fill the native panel width. */
+.sw-dock,
+.sw-transport {
+  width: 100%;
+  flex: 1 0 100%;
+}
+.sw-transport [data-kit='rocker']:has([aria-pressed='true']) {
+  --wall-l: 1.25px;
+  --wall-r: 2.75px;
+  --shade-dir: 270deg;
+}
+.sw-transport [data-kit='rocker']:has([aria-pressed='true']) [data-kit='rocker-cap']::after {
+  opacity: 1;
+}
