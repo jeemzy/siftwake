@@ -4,6 +4,14 @@
     "slug": "siftwake",
     "version": "0.1.0",
     "orientation": "portrait",
-    "web": { "bundler": "metro" }
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6a2c3f40-ba06-424d-845f-3412e40755c3"
+      }
+    },
+    "owner": "jmzy"
   }
 }

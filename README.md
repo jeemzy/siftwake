@@ -11,7 +11,7 @@ npm ci
 npm run web
 ```
 
-Open the local URL printed by Expo. The scene starts paused. Set **Fan strength**, then press **Play** or **Step**. The slider adjusts every fan together for repeatable comparisons. Choose **Fan** and tap a fan to rotate it. **Wind** applies a gust along a stroke. **Reset** restores the current scene and its original seed. **Blank canvas** opens an empty world.
+Open the local URL printed by Expo. The scene starts paused. Tap a bottom hotbar category to reveal its items. **Materials** holds the grains, smoke, wood, and flame. **Air** holds the fan strength slider, fans, gusts, pressure, and suction. The slider adjusts every fan together. Select **Fan** and tap a placed fan to rotate it. **Build** holds walls and the eraser. **World** holds reset, scene switching, and the pressure overlay. Draw directly on the canvas while paused or playing. **Step** advances one tick.
 
 ## Checks
 
