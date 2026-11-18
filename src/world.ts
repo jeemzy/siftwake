@@ -4,9 +4,20 @@ export const W = 160,
   B = 60;
 const N = W * H,
   T = A * B;
-export const M = { Empty: 0, Sand: 1, Gravel: 2, Smoke: 3, Wood: 4, Flame: 5, Ember: 6 } as const;
+export const M = {
+  Empty: 0,
+  Sand: 1,
+  Gravel: 2,
+  Smoke: 3,
+  Wood: 4,
+  Flame: 5,
+  Ember: 6,
+  Water: 7,
+  WetSand: 8,
+} as const;
 export type Tool =
   | 'Sand'
+  | 'Water'
   | 'Gravel'
   | 'Smoke'
   | 'Wood'
@@ -138,7 +149,14 @@ export class World {
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         const m = this.cells[x + y * W];
-        if (m === M.Sand || m === M.Gravel || m === M.Wood || m === M.Ember)
+        if (
+          m === M.Sand ||
+          m === M.Gravel ||
+          m === M.Wood ||
+          m === M.Ember ||
+          m === M.Water ||
+          m === M.WetSand
+        )
           this.openness[tile(x, y)] -= 0.061;
       }
     for (let t = 0; t < T; t++) {
@@ -197,13 +215,52 @@ export class World {
   private move(i: number, x: number, y: number) {
     if (x < 0 || y < 0 || x >= W || y >= H || this.wall[tile(x, y)]) return false;
     const j = x + y * W;
-    if (this.cells[j]) return false;
+    const displaced = this.cells[j];
+    if (displaced !== M.Empty) {
+      const sinks = this.cells[i] === M.WetSand || this.cells[i] === M.Gravel;
+      if (displaced !== M.Water || !sinks || j !== i + W || this.moved[j] === this.ticks)
+        return false;
+    }
     this.cells[j] = this.cells[i];
     this.life[j] = this.life[i];
     this.moved[j] = this.ticks;
-    this.cells[i] = 0;
+    this.cells[i] = displaced;
     this.life[i] = 0;
+    if (displaced !== M.Empty) this.moved[i] = this.ticks;
     return true;
+  }
+
+  private hydrateSand() {
+    // Resolve contacts before gravity can carry either partner away.
+    for (let i = this.cells.indexOf(M.Water); i !== -1; i = this.cells.indexOf(M.Water, i + 1)) {
+      const x = i % W,
+        y = Math.floor(i / W);
+      const first = (this.ticks + x + y) % dirs.length;
+      for (let k = 0; k < dirs.length; k++) {
+        const [dx, dy] = dirs[(first + k) % dirs.length];
+        const nx = x + dx,
+          ny = y + dy;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+        const grain = nx + ny * W;
+        if (this.cells[grain] !== M.Sand) continue;
+        this.cells[i] = M.Empty;
+        this.cells[grain] = M.WetSand;
+        this.moved[grain] = this.ticks;
+        break;
+      }
+    }
+  }
+
+  private flowWater(i: number, x: number, y: number) {
+    if (this.move(i, x, y + 1)) return;
+    const first = this.random() < 0.5 ? 1 : -1;
+    for (const dx of [first, -first]) {
+      const nx = x + dx;
+      if (nx < 0 || nx >= W || this.wall[tile(nx, y)] || this.cells[nx + y * W] !== M.Empty)
+        continue;
+      if (this.move(i, nx, y + 1)) return;
+    }
+    if (!this.move(i, x + first, y)) this.move(i, x - first, y);
   }
 
   private burn(i: number, x: number, y: number) {
@@ -233,6 +290,7 @@ export class World {
 
   step() {
     this.ticks++;
+    this.hydrateSand();
     this.air();
     const reverse = this.ticks % 2 === 0;
     for (let y = H - 1; y >= 0; y--)
@@ -243,6 +301,10 @@ export class World {
         if (!m || m === M.Wood || this.moved[i] === this.ticks) continue;
         if (m === M.Ember || m === M.Flame) this.burn(i, x, y);
         if (m === M.Ember) continue;
+        if (m === M.Water) {
+          this.flowWater(i, x, y);
+          continue;
+        }
         const t = tile(x, y);
         const vx = (this.u[t] + (t % A ? this.u[t - 1] : 0)) * 0.5;
         const vy = (this.v[t] + (t >= A ? this.v[t - A] : 0)) * 0.5;
@@ -256,7 +318,7 @@ export class World {
           continue;
         }
         const exposed = y === 0 || !this.cells[i - W];
-        const threshold = m === M.Gravel ? 1.1 : 0.2;
+        const threshold = m === M.Gravel ? 1.1 : m === M.WetSand ? 0.8 : 0.2;
         if (
           exposed &&
           Math.abs(vx) > threshold &&
@@ -267,7 +329,18 @@ export class World {
         }
         if (this.move(i, x, y + 1)) continue;
         const dx = this.random() < 0.5 ? 1 : -1;
-        if (!this.move(i, x + dx, y + 1)) this.move(i, x - dx, y + 1);
+        if (m === M.WetSand) {
+          // Cohesion holds a damp grain on a shallow step. A deeper drop breaks it loose.
+          for (const side of [x + dx, x - dx]) {
+            if (side < 0 || side >= W || y + 2 >= H) continue;
+            if (
+              !this.wall[tile(side, y + 2)] &&
+              this.cells[side + (y + 2) * W] === M.Empty &&
+              this.move(i, side, y + 1)
+            )
+              break;
+          }
+        } else if (!this.move(i, x + dx, y + 1)) this.move(i, x - dx, y + 1);
       }
   }
 }

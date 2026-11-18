@@ -6,7 +6,7 @@ import { World, type Scene, type Tool } from './world';
 import Board from './Board';
 
 const groups = {
-  Materials: ['Sand', 'Gravel', 'Smoke', 'Wood', 'Flame'],
+  Materials: ['Sand', 'Water', 'Gravel', 'Smoke', 'Wood', 'Flame'],
   Air: ['Wind', 'Fan', 'Pressure', 'Suction'],
   Build: ['Wall', 'Erase'],
   World: [],
@@ -15,6 +15,7 @@ type Group = keyof typeof groups;
 const categories: Group[] = ['Materials', 'Air', 'Build', 'World'];
 const swatches: Record<Tool, string> = {
   Sand: '#e7b565',
+  Water: '#469dd3',
   Gravel: '#909a9e',
   Smoke: '#c2d8cf',
   Wood: '#b07751',

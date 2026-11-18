@@ -2,6 +2,8 @@
 
 A falling-sand wind tunnel for Expo. The top passage contains smoke, the middle passage compares sand with gravel, and the bottom passage lets you blow flame between two pieces of wood.
 
+Choose **Water** in Materials to fill a basin. Where water touches dry sand, a grain turns darker and holds a steeper pile.
+
 ## Play on a PC
 
 Install Node.js 22.15 or newer with npm. From the project directory run:
@@ -25,6 +27,7 @@ With the server running, the browser check uses Playwright CLI and Chrome:
 ```sh
 npx --yes --package @playwright/cli playwright-cli -s=siftwake open http://localhost:8081 --browser chrome
 npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filename tests/tunnel.playwright.js
+npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filename tests/water.playwright.js
 ```
 
 The first milestone runs locally without an Xcode build. The [game specification](SPEC.md) covers the editor, saved worlds, and subsequent iPhone validation.
