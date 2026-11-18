@@ -1,7 +1,10 @@
 // Run against the water worktree with playwright-cli run-code --filename tests/water.playwright.js.
 async (page) => {
   await page.reload();
-  const control = (label) => page.getByLabel(label, { exact: true });
+  const control = (name) => {
+    const options = { name, exact: true };
+    return page.getByRole('button', options).or(page.getByRole('tab', options));
+  };
   await control('World').click();
   await control('Blank canvas').click();
   await control('Materials').click();
