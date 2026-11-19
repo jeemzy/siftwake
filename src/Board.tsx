@@ -9,6 +9,8 @@ import { World, W, H, tile, type Tool } from './world';
 type Props = {
   world: World;
   paused: boolean;
+  locked: React.RefObject<boolean>;
+  onStroke: (active: boolean) => void;
   camera: Layers;
   onReading: (value: number) => void;
   tool: Tool;
@@ -21,6 +23,8 @@ type Props = {
 export default function Board({
   world,
   paused,
+  locked,
+  onStroke,
   camera,
   onReading,
   tool,
@@ -55,7 +59,7 @@ export default function Board({
       dirty = true;
     function paintFrame(time: number) {
       pending = 0;
-      if (!paused && previous !== undefined) {
+      if (!paused && !locked.current && previous !== undefined) {
         debt += Math.min(100, time - previous);
         while (debt >= 1000 / 30) {
           world.step();
@@ -93,7 +97,8 @@ export default function Board({
   }, [world, tool, width]);
 
   function sample(localX: number, localY: number, start: boolean) {
-    if (!width) return;
+    if (!width || locked.current) return;
+    if (start) onStroke(true);
     const x = Math.floor((localX * W) / width),
       y = Math.floor((localY * W) / width);
     if (x < 0 || y < 0 || x >= W || y >= H) {
@@ -159,6 +164,7 @@ export default function Board({
               sample={sample}
               end={() => {
                 last.current = null;
+                onStroke(false);
               }}
             />
           </View>

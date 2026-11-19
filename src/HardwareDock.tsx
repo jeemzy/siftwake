@@ -1,5 +1,4 @@
 'use dom';
-import { useState } from 'react';
 import type { DOMProps } from 'expo/dom';
 import { Hardware } from '@/registry/hardware/ui/hardware';
 import { Tabs } from '@/registry/hardware/ui/tabs';
@@ -21,24 +20,21 @@ type Props = {
   camera: Layers;
   reading: number | null;
   feedback: string;
-  resetId: number;
+  category: Group;
+  power: number;
+  updateReady: boolean;
+  onRestart: () => Promise<void>;
   onTool: (tool: Tool) => Promise<void>;
   onBrush: (radius: number) => Promise<void>;
   onPower: (power: number) => Promise<void>;
   onScene: (scene: Scene) => Promise<void>;
   onViewChange: (view: ViewName, enabled: boolean) => Promise<void>;
-  onCategory: () => Promise<void>;
+  onCategory: (category: Group) => Promise<void>;
   dom?: DOMProps;
 };
 
 export default function HardwareDock(props: Props) {
-  const [category, setCategory] = useState<Group>('Materials');
-  const [power, setPower] = useState(55);
-  const [seenReset, setSeenReset] = useState(props.resetId);
-  if (seenReset !== props.resetId) {
-    setSeenReset(props.resetId);
-    setPower(55);
-  }
+  const { category, power } = props;
   function controls(group: Group) {
     return (
       <>
@@ -50,7 +46,6 @@ export default function HardwareDock(props: Props) {
                 color="white"
                 value={power}
                 onValueChange={(next) => {
-                  setPower(next);
                   void props.onPower(next);
                 }}
               />
@@ -101,6 +96,9 @@ export default function HardwareDock(props: Props) {
           {group === 'World' ? (
             <>
               <Button onClick={() => props.onScene(props.scene)}>Reset</Button>
+              {props.updateReady && (
+                <Button onClick={() => props.onRestart()}>Restart to update</Button>
+              )}
               <Button onClick={() => props.onScene(props.scene === 'Tunnel' ? 'Blank' : 'Tunnel')}>
                 {props.scene === 'Tunnel' ? 'Blank canvas' : 'Load tunnel'}
               </Button>
@@ -128,8 +126,7 @@ export default function HardwareDock(props: Props) {
         label="Tool categories"
         value={category}
         onValueChange={(next) => {
-          setCategory(next as Group);
-          void props.onCategory();
+          void props.onCategory(next as Group);
         }}
         items={(Object.keys(props.groups) as Group[]).map((group) => ({
           value: group,

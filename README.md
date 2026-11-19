@@ -42,3 +42,9 @@ npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filena
 ```
 
 The first milestone runs locally without an Xcode build. The [game specification](SPEC.md) covers the editor, saved worlds, and subsequent iPhone validation.
+
+## iPhone updates
+
+Install the unsigned IPA from the latest GitHub release. Its production channel checks at launch and when you return to the game, at most once a minute. A downloaded update offers **Restart to update** or **Later**. If you defer it, you can restart from **World**. Restart saves the current world and editor to SQLite and restores it paused. The installed game also checkpoints dirty sessions every 15 seconds and on backgrounding.
+
+The Linux publishing workflow tests the game, exports iOS, exercises the exported toolbar, and compares the candidate runtime to the fingerprint attached to the latest iPhone release. Compatible app changes merged to main publish to the linked Expo project using the repository secret EXPO_TOKEN. After a native change, run **Build unsigned iPhone IPA**, install that release, then dispatch **Publish iPhone OTA** or merge the next game change. A previous compatible update can be republished from the Expo dashboard.

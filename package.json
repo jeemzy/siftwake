@@ -1,6 +1,6 @@
 {
   "name": "siftwake",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -16,6 +16,8 @@
     "@ui-sdk/core": "0.1.0-beta.10",
     "@ui-sdk/react": "0.1.0-beta.10",
     "expo": "~58.0.26",
+    "expo-sqlite": "~58.0.18",
+    "expo-updates": "~58.0.22",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "playwright": "1.65.1",
     "typescript": "~6.0.3"
   }
 }

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Siftwake",
     "slug": "siftwake",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "ios": {
       "bundleIdentifier": "com.jeemzy.siftwake"
@@ -15,6 +15,20 @@
         "projectId": "6a2c3f40-ba06-424d-845f-3412e40755c3"
       }
     },
-    "owner": "jmzy"
+    "owner": "jmzy",
+    "plugins": [
+      "expo-sqlite"
+    ],
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6a2c3f40-ba06-424d-845f-3412e40755c3",
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    }
   }
 }

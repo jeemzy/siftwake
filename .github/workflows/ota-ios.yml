@@ -1,0 +1,89 @@
+name: Publish iPhone OTA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'vendor/**'
+      - 'scripts/**'
+      - 'public/**'
+      - 'assets/**'
+      - 'App*.tsx'
+      - 'index.js'
+      - 'app*.json'
+      - 'app.config.*'
+      - 'package*.json'
+      - 'metro.config.*'
+      - 'babel.config.*'
+      - 'fingerprint.config.*'
+      - 'tsconfig.json'
+permissions:
+  contents: read
+concurrency:
+  group: siftwake-production-ota
+  cancel-in-progress: false
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm test
+      - name: Export iPhone update and web game
+        run: |
+          npx --no-install expo export --platform ios --dump-assetmap --output-dir dist-ota
+          npx --no-install expo export --platform web --output-dir dist-web
+      - name: Test the exported game and iPhone DOM assets
+        run: |
+          npx --no-install playwright install --with-deps chromium
+          node scripts/check-export.mjs
+      - name: Compare with released iPhone runtime
+        id: compatibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx --no-install expo-updates runtimeversion:resolve --platform ios --workflow managed | jq -er .runtimeVersion > ios-candidate.txt
+          if ! gh release view >/dev/null 2>&1; then
+            echo "::notice::New IPA required. Build the first OTA-enabled IPA."
+            exit 0
+          fi
+          gh release download --pattern ios-runtime.txt
+          if [[ "$(cat ios-candidate.txt)" != "$(cat ios-runtime.txt)" ]]; then
+            echo "::notice::New IPA required. The released iPhone runtime differs."
+            exit 0
+          fi
+          echo "compatible=true" >> "$GITHUB_OUTPUT"
+      - name: Keep the tested export
+        if: steps.compatibility.outputs.compatible == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-ios-ota
+          path: |
+            dist-ota/
+            ios-candidate.txt
+          retention-days: 7
+      - name: Publish tested bundle to production
+        if: steps.compatibility.outputs.compatible == 'true'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          git fetch -q origin main
+          if ! git diff --quiet "$GITHUB_SHA" origin/main -- . ':!*.md' ':!tests'; then
+            echo "::notice::A newer app revision is on main. Skipping this update."
+            exit 0
+          fi
+          if [[ -z "$EXPO_TOKEN" ]]; then
+            echo "::error::Set the repository Actions secret EXPO_TOKEN to enable automatic publishing."
+            exit 1
+          fi
+          npx --yes eas-cli@27.10.0 update --platform ios --channel production --environment production --input-dir dist-ota --skip-bundler --non-interactive --message "Siftwake ${GITHUB_SHA:0:8}"

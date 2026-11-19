@@ -73,6 +73,81 @@ export class World {
   private seed = 139729;
   ticks = 0;
   strength = 0.55;
+  edits = 0;
+
+  private persistedFields() {
+    return [
+      this.cells,
+      this.life,
+      this.temperature,
+      this.latent,
+      this.wall,
+      this.device,
+      this.pressure,
+      this.u,
+      this.v,
+      this.airTemperature,
+      this.moved,
+    ];
+  }
+
+  // Version 1 binary layout. Append a migration before changing field order or material IDs.
+  snapshot(): Uint8Array {
+    const fields = this.persistedFields();
+    const bytes = new Uint8Array(32 + fields.reduce((size, field) => size + field.byteLength, 0));
+    const header = new DataView(bytes.buffer);
+    header.setUint32(0, 0x53494654);
+    header.setUint32(4, 1);
+    header.setUint16(8, W);
+    header.setUint16(10, H);
+    header.setFloat64(12, this.ticks);
+    header.setUint32(20, this.seed);
+    header.setFloat64(24, this.strength);
+    let offset = 32;
+    for (const field of fields) {
+      bytes.set(new Uint8Array(field.buffer, field.byteOffset, field.byteLength), offset);
+      offset += field.byteLength;
+    }
+    return bytes;
+  }
+
+  static restore(bytes: Uint8Array) {
+    const world = new World();
+    const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const fields = world.persistedFields();
+    if (
+      bytes.length !== 32 + fields.reduce((n, f) => n + f.byteLength, 0) ||
+      header.getUint32(0) !== 0x53494654 ||
+      header.getUint32(4) !== 1 ||
+      header.getUint16(8) !== W ||
+      header.getUint16(10) !== H
+    )
+      throw Error('Unsupported world checkpoint');
+    world.ticks = header.getFloat64(12);
+    world.seed = header.getUint32(20);
+    world.strength = header.getFloat64(24);
+    if (
+      !Number.isSafeInteger(world.ticks) ||
+      world.ticks < 0 ||
+      !Number.isFinite(world.strength) ||
+      world.strength < 0 ||
+      world.strength > 1
+    )
+      throw Error('Invalid world checkpoint');
+    let offset = 32;
+    for (const field of fields) {
+      new Uint8Array(field.buffer).set(bytes.subarray(offset, offset + field.byteLength));
+      offset += field.byteLength;
+    }
+    if (
+      world.cells.some((id) => id > M.Ash) ||
+      world.device.some((id) => id > 6) ||
+      world.wall.some((id) => id > 1) ||
+      fields.some((f) => f instanceof Float32Array && !f.every(Number.isFinite))
+    )
+      throw Error('Unreadable world data');
+    return world;
+  }
 
   private random() {
     this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0;
@@ -95,6 +170,7 @@ export class World {
     x = Math.floor(x);
     y = Math.floor(y);
     if (x < 0 || y < 0 || x >= W || y >= H) return;
+    this.edits++;
     const t = tile(x, y);
     if (tool === 'Wall') {
       this.wall[t] = 1;
@@ -145,6 +221,7 @@ export class World {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     const t = tile(x, y);
     if (this.wall[t]) return;
+    this.edits++;
     if (t % A !== A - 1 && !this.wall[t + 1]) this.u[t] = clamp(this.u[t] + dx * 0.55, -5, 5);
     if (t < T - A && !this.wall[t + A]) this.v[t] = clamp(this.v[t] + dy * 0.55, -5, 5);
   }

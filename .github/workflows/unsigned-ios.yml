@@ -5,10 +5,30 @@ permissions:
   contents: read
 
 jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    outputs:
+      hash: ${{ steps.runtime.outputs.hash }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - id: runtime
+        run: |
+          hash=$(npx --no-install expo-updates runtimeversion:resolve --platform ios --workflow managed | jq -er .runtimeVersion)
+          [[ "$hash" =~ ^[a-f0-9]{40}$ ]]
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
   build:
+    needs: runtime
+    permissions:
+      contents: write
     runs-on: xcode-27
     timeout-minutes: 60
     env:
+      EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ needs.runtime.outputs.hash }}
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
     steps:
@@ -33,6 +53,10 @@ jobs:
         run: |
           app="$RUNNER_TEMP/build/Build/Products/Release-iphoneos/Siftwake.app"
           test -s "$app/main.jsbundle"
+          fingerprint=$(find "$app" -path '*/EXUpdates.bundle/fingerprint' -print -quit)
+          test "$(cat "$fingerprint")" = "$EXPO_UPDATES_FINGERPRINT_OVERRIDE"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :EXUpdatesRequestHeaders:expo-channel-name' "$app/Expo.plist")" = production
+          cp "$fingerprint" "$RUNNER_TEMP/ios-runtime.txt"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
           mkdir -p "$RUNNER_TEMP/package/Payload"
           ditto "$app" "$RUNNER_TEMP/package/Payload/Siftwake.app"
@@ -55,3 +79,13 @@ jobs:
           name: Siftwake-unsigned
           path: ${{ runner.temp }}/Siftwake-unsigned.ipa
           if-no-files-found: error
+
+      - name: Release unsigned IPA and compatibility fingerprint
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "ios-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" --target "$GITHUB_SHA" --latest \
+            --title "Siftwake $(node -p 'require("./app.json").expo.version') for iPhone" \
+            --notes "Unsigned device IPA. Production OTA runtime $(cat "$RUNNER_TEMP/ios-runtime.txt")." \
+            "$RUNNER_TEMP/Siftwake-unsigned.ipa" "$RUNNER_TEMP/ios-runtime.txt"

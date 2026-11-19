@@ -28,7 +28,7 @@ async (page) => {
       reading: null,
       swatches: {},
       brush: 1,
-      resetId: 0,
+      category:'Materials', power:55, updateReady:false,
       scene: 'Blank',
       feedback: '',
       paused: true,
@@ -43,6 +43,7 @@ async (page) => {
         const message = JSON.parse(raw);
         if (message.type !== '$$native_action') return;
         const { actionId, uid, args } = message.data;
+        if (actionId === 'onCategory') props.category=args[0];
         if (actionId === 'onViewChange') {
           window.observedActions.push(args);
           const [key, enabled] = args;
