@@ -36,6 +36,7 @@ async (page) => {
     const emit = (type, data) =>
       window.dispatchEvent(new CustomEvent('$$dom_event', { detail: { type, data } }));
     window.observedActions = [];
+    window.transportActions = [];
     window.ReactNativeWebView = {
       injectedObjectJson: () =>
         JSON.stringify({ EXPO_DOM_HOST_OS: 'ios', initialProps: { names, props } }),
@@ -43,6 +44,8 @@ async (page) => {
         const message = JSON.parse(raw);
         if (message.type !== '$$native_action') return;
         const { actionId, uid, args } = message.data;
+        if(actionId==='onPlayback'){props.paused=!props.paused;window.transportActions.push(actionId);}
+        if(actionId==='onStep')window.transportActions.push(actionId);
         if (actionId === 'onCategory') props.category=args[0];
         if (actionId === 'onViewChange') {
           window.observedActions.push(args);
@@ -57,11 +60,21 @@ async (page) => {
       },
     };
   });
+  let dock, transport;
   for (const url of entries) {
     await page.goto(url);
     const world = page.getByRole('tab', { name: 'World', exact: true });
     await page.locator('[data-skin=hardware]').waitFor();
-    if (!(await world.count())) continue;
+    if (!(await world.count())) {
+      const btn=name=>page.getByRole('button',{name,exact:true});
+      await btn('Play').click();await btn('Stop').waitFor();
+      if(!await btn('Step').isDisabled())throw Error('Packaged Step enabled while playing');
+      await btn('Stop').click();await btn('Play').waitFor();await btn('Step').click();
+      await page.waitForFunction(()=>window.transportActions.length===3);
+      transport=await page.evaluate(()=>window.transportActions);
+      if(transport.join(',')!=='onPlayback,onPlayback,onStep')throw Error('Packaged transport bridge failed');
+      continue;
+    }
     await world.click();
     const check = (name) => page.getByRole('checkbox', { name, exact: true });
     const clicks = ['Pressure', 'Air', 'Heat', 'Pressure', 'Normal'];
@@ -95,7 +108,8 @@ async (page) => {
     const actual = await page.evaluate(() => window.observedActions);
     if (JSON.stringify(actual) !== JSON.stringify(expected))
       throw Error('Unexpected bridge payload: ' + JSON.stringify(actual));
-    return actual;
+    dock=actual;
   }
-  throw Error('Missing SPEC-01 panel in IPA');
+  if(!transport || !dock)throw Error('Missing SPEC-01 panel');
+  return {dock,transport};
 }
