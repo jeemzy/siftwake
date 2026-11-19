@@ -83,10 +83,13 @@ async (page) => {
       await page.waitForFunction((n) => window.observedActions.length === n, i + 1, {
         timeout: 2500,
       });
-      for (const key of ['Pressure', 'Air', 'Heat', 'Normal']) {
-        if ((await check(key).isChecked()) !== states[i].includes(key))
-          throw Error('Wrong host-confirmed state: ' + key);
-      }
+      // A native action is posted before React commits the echoed props in the DOM panel.
+      await page.waitForFunction(expected => {
+        const controls = [...document.querySelectorAll('[data-kit="checkbox"]')];
+        return controls.length === 4 && controls.every(control =>
+          (control.getAttribute('aria-checked') === 'true') === expected.includes(control.getAttribute('aria-label'))
+        );
+      }, states[i], {timeout:2500});
     }
     const actual = await page.evaluate(() => window.observedActions);
     if (JSON.stringify(actual) !== JSON.stringify(expected))
