@@ -5,9 +5,10 @@ import HardwareDock from './HardwareDock';
 import Transport from './Transport';
 import { World, type Scene, type Tool } from './world';
 import Board from './Board';
+import { saveAndRestart } from './updateCheck';
 import { groups, swatches } from './tools';
 import { loadSession, saveSession, persists } from './storage';
-import { checkUpdate, applyUpdate } from './ota';
+import { checkUpdate, applyUpdate, updateLabel } from './ota';
 import type { Editor } from './checkpoint';
 import { changeLayer, normal } from './views';
 
@@ -31,7 +32,7 @@ export default function Lab() {
   const [revision, setRevision] = useState(0);
   const [feedback, setFeedback] = useState('');
   const [category, setCategory] = useState<Editor['category']>(restored?.category ?? 'Materials');
-  const [power, setPower] = useState(Math.round(world.strength * 100));
+  const [sceneGeneration, setSceneGeneration] = useState(0);
   const [ready, setReady] = useState(false);
   const [later, setLater] = useState(false);
   const [notice, setNotice] = useState(loaded.warning ?? '');
@@ -89,6 +90,18 @@ export default function Lab() {
       listener.remove();
     };
   }, [loaded]);
+  function deferUpdate() {
+    waiting.current = false;
+    setNotice('');
+    setLater(true);
+    if (ready && loaded.writable && !drawing.current) {
+      try {
+        checkpoint();
+      } catch {
+        setNotice('World could not be saved. Check available storage.');
+      }
+    }
+  }
   async function restart() {
     if (locked.current) return;
     if (drawing.current) {
@@ -100,8 +113,7 @@ export default function Lab() {
     setApplying(true);
     setPaused(true);
     try {
-      checkpoint();
-      await applyUpdate();
+      await saveAndRestart(checkpoint, applyUpdate);
     } catch {
       locked.current = false;
       setApplying(false);
@@ -116,7 +128,7 @@ export default function Lab() {
   async function load(next: Scene) {
     if (locked.current) return;
     setWorld(new World(next));
-    setPower(55);
+    setSceneGeneration((n) => n + 1);
     setScene(next);
     setReading(null);
     setPaused(true);
@@ -160,15 +172,7 @@ export default function Lab() {
                   <Text style={s.action}>Restart to update</Text>
                 </Pressable>
               )}
-              <Pressable
-                accessibilityRole="button"
-                disabled={applying}
-                onPress={() => {
-                  waiting.current = false;
-                  setNotice('');
-                  setLater(true);
-                }}
-              >
+              <Pressable accessibilityRole="button" disabled={applying} onPress={deferUpdate}>
                 <Text style={s.action}>{ready ? 'Later' : 'Dismiss'}</Text>
               </Pressable>
             </View>
@@ -198,7 +202,9 @@ export default function Lab() {
               reading={reading}
               feedback={feedback}
               category={category}
-              power={power}
+              sceneGeneration={sceneGeneration}
+              power={Math.round(world.strength * 100)}
+              updateLabel={updateLabel}
               updateReady={ready && later}
               onRestart={restart}
               onTool={async (next) => {
@@ -217,7 +223,6 @@ export default function Lab() {
               }}
               onPower={async (next) => {
                 if (locked.current) return;
-                setPower(next);
                 world.strength = next / 100;
               }}
               onScene={load}

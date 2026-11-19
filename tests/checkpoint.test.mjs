@@ -64,3 +64,63 @@ test('offline checks and interrupted fetches never activate; foreground retries 
   assert.equal(await check(), true);
   assert.equal(downloads, 2);
 });
+
+test('restart waits for SQLite commit; an interrupted save preserves both previous generations', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { writeSlot } = await import('../src/checkpoint.ts');
+  const { saveAndRestart } = await import('../src/updateCheck.ts');
+  const db = new DatabaseSync(':memory:');
+  db.exec(
+    'CREATE TABLE checkpoints (id INTEGER PRIMARY KEY, world BLOB NOT NULL, editor TEXT NOT NULL)',
+  );
+  const adapter = {
+    withTransactionSync(fn) {
+      db.exec('BEGIN');
+      try {
+        fn();
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    },
+    execSync(sql) {
+      db.exec(sql);
+    },
+    runSync(sql, ...args) {
+      db.prepare(sql).run(...args);
+    },
+  };
+  try {
+    const world = new World('Tunnel');
+    const save = () => writeSlot(adapter, { world, editor });
+    const rows = () => db.prepare('SELECT world,editor FROM checkpoints ORDER BY id DESC').all();
+    save();
+    world.step();
+    save();
+    world.step();
+    let reloads = 0;
+    db.exec(
+      "CREATE TRIGGER fail_write BEFORE DELETE ON checkpoints BEGIN SELECT RAISE(ABORT,'simulated interrupted write'); END",
+    );
+    await assert.rejects(
+      saveAndRestart(save, async () => {
+        reloads++;
+      }),
+    );
+    assert.equal(reloads, 0);
+    assert.deepEqual(
+      rows().map((r) => decodeCheckpoint(r.world, r.editor).world.ticks),
+      [1, 0],
+    );
+    db.exec('DROP TRIGGER fail_write');
+    await saveAndRestart(save, async () => {
+      reloads++;
+      assert.deepEqual(readSlots(rows()).session.world.snapshot(), world.snapshot());
+    });
+    assert.equal(reloads, 1);
+    assert.equal(rows().length, 2);
+  } finally {
+    db.close();
+  }
+});

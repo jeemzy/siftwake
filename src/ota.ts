@@ -10,3 +10,9 @@ export async function checkUpdate() {
 export function applyUpdate() {
   return Updates.reloadAsync();
 }
+
+export const updateLabel = Updates.isEnabled
+  ? Updates.isEmbeddedLaunch
+    ? 'Built-in game'
+    : 'OTA ' + (Updates.updateId?.slice(0, 8) ?? '')
+  : '';

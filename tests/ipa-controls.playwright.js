@@ -28,7 +28,7 @@ async (page) => {
       reading: null,
       swatches: {},
       brush: 1,
-      category:'Materials', power:55, updateReady:false,
+      category:'Materials', power:55, sceneGeneration:0, updateReady:false,
       scene: 'Blank',
       feedback: '',
       paused: true,

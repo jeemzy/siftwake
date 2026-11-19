@@ -50,3 +50,18 @@ export function readSlots(rows: { world: Uint8Array; editor: string }[]): Loaded
     warning: 'This build could not read your saved world. Your save is preserved.',
   };
 }
+
+// Both rows are committed together. An interrupted write keeps the previous slot intact.
+export function writeSlot(
+  db: Pick<import('expo-sqlite').SQLiteDatabase, 'withTransactionSync' | 'runSync' | 'execSync'>,
+  { world, editor }: Session,
+) {
+  const blob = world.snapshot();
+  const metadata = JSON.stringify({ version: 1, editor });
+  db.withTransactionSync(() => {
+    db.runSync('INSERT INTO checkpoints(world,editor) VALUES (?,?)', blob, metadata);
+    db.execSync(
+      'DELETE FROM checkpoints WHERE id NOT IN (SELECT id FROM checkpoints ORDER BY id DESC LIMIT 2)',
+    );
+  });
+}

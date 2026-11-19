@@ -89,7 +89,7 @@ async (page) => {
   if ((await value()) !== '55') throw Error('Initial knob value');
   await page.mouse.move(rect.x + 20, rect.y + rect.height / 2);
   await page.mouse.down();
-  await page.mouse.move(rect.x + 20, rect.y + rect.height / 2 - 40, { steps: 5 });
+  await page.mouse.move(rect.x + 20, rect.y + rect.height / 2 - 40);
   await page.mouse.up();
   if ((await value()) !== '75') throw Error('Vertical knob scrub: ' + (await value()));
   await knob.focus();

@@ -24,3 +24,8 @@ export function createUpdateCheck(transport: Transport, now = Date.now) {
     return ready;
   };
 }
+
+export async function saveAndRestart(save: () => void, reload: () => Promise<void>) {
+  save();
+  await reload();
+}

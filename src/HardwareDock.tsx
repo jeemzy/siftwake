@@ -1,4 +1,5 @@
 'use dom';
+import { useState } from 'react';
 import type { DOMProps } from 'expo/dom';
 import { Hardware } from '@/registry/hardware/ui/hardware';
 import { Tabs } from '@/registry/hardware/ui/tabs';
@@ -22,6 +23,8 @@ type Props = {
   feedback: string;
   category: Group;
   power: number;
+  sceneGeneration: number;
+  updateLabel: string;
   updateReady: boolean;
   onRestart: () => Promise<void>;
   onTool: (tool: Tool) => Promise<void>;
@@ -34,7 +37,15 @@ type Props = {
 };
 
 export default function HardwareDock(props: Props) {
-  const { category, power } = props;
+  const { category } = props;
+  // Track continuous dial gestures locally while forwarding each detent to the world.
+  const [power, setPower] = useState(props.power);
+  const [generation, setGeneration] = useState(props.sceneGeneration);
+  if (generation !== props.sceneGeneration) {
+    setGeneration(props.sceneGeneration);
+    setPower(props.power);
+  }
+
   function controls(group: Group) {
     return (
       <>
@@ -46,6 +57,7 @@ export default function HardwareDock(props: Props) {
                 color="white"
                 value={power}
                 onValueChange={(next) => {
+                  setPower(next);
                   void props.onPower(next);
                 }}
               />
@@ -87,7 +99,12 @@ export default function HardwareDock(props: Props) {
           )}
           {props.camera.Pressure && <span>Blue · low　Amber · high</span>}
           {props.camera.Air && <span>› flow</span>}
-          {isChecked(props.camera, 'Normal') && group === 'World' && 'Painting with ' + props.tool}
+          {isChecked(props.camera, 'Normal') && group === 'World' && (
+            <span>Painting with {props.tool}</span>
+          )}
+          {group === 'World' && isChecked(props.camera, 'Normal') && props.updateLabel && (
+            <span style={{ marginLeft: 'auto' }}>{props.updateLabel}</span>
+          )}
           {(props.camera.Heat || group === 'Thermal') && props.reading !== null && (
             <output aria-label="Brush temperature">{props.reading} °C</output>
           )}
