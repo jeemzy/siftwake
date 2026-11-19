@@ -19,6 +19,12 @@ The controls use the [published SPEC-01 registry](https://github.com/shuding/spe
 
 The vendored files in `vendor/spec-01` come from that pinned commit. Siftwake extends Button Group with pressed and disabled states and Flat Knob with adjustable accessibility semantics and Home/End keys. Postinstall flattens the registry's skin import list for Metro. The UI SDK dependencies use the public beta.10 release. Licenses are in `licenses/`.
 
+## Temperature and cameras
+
+In **World**, latch a SPEC-01 camera checkbox. Pressure colors low-pressure air blue and high-pressure air amber. Air adds moving streamlines with arrowheads. Heat uses a fixed Celsius scale and shows the last sampled temperature. Toggle any combination while painting. With Heat active, Pressure uses sparse blue or amber markings over the temperature scale. Normal clears every layer.
+
+Use **Thermal → Heat or Cool** on a material or empty air. Brush edits work while paused. Press Step or Play to conduct heat, blow it downwind and change phase. Ice melts, water boils, steam condenses and wet sand dries. Around 1,050 °C gravel melts into lava, and around 1,500 °C sand melts into glass. Continued heating supplies the energy for each change. Cooling produces solid rock or glass. Sustained heat chars wood, then exposed char burns down to ash. Water can put it out.
+
 ## Checks
 
 ```sh
@@ -32,6 +38,7 @@ With the server running, the browser check uses Playwright CLI and Chrome:
 npx --yes --package @playwright/cli playwright-cli -s=siftwake open http://localhost:8081 --browser chrome
 npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filename tests/tunnel.playwright.js
 npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filename tests/water.playwright.js
+npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filename tests/cameras.playwright.js
 ```
 
 The first milestone runs locally without an Xcode build. The [game specification](SPEC.md) covers the editor, saved worlds, and subsequent iPhone validation.

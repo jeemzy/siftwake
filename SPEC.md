@@ -106,7 +106,7 @@ Reopen the last committed world paused. Gameplay and saves operate locally once 
 
 ## Out of Scope
 
-Version one excludes temperature transport, detailed combustion chemistry, heat-driven convection, a full Sandboxels catalog or mod loader, arbitrary user scripts, multiple save slots, cloud sharing, and multiplayer. Packaging a standalone IPA, LiveContainer compatibility, TestFlight, and App Store distribution are separate release work. A simulator matrix and macOS builds on every change are outside the first-version test workflow.
+Version 0.2 transports heat between materials and through the existing airflow. It excludes detailed combustion chemistry, heat-driven convection, a full Sandboxels catalog or mod loader, arbitrary user scripts, multiple save slots, cloud sharing, and multiplayer. The manual Xcode workflow packages an unsigned iPhone IPA. LiveContainer launch verification, TestFlight and App Store distribution are separate. A simulator matrix and macOS builds on every change are outside the first-version test workflow.
 
 ## Further Notes
 

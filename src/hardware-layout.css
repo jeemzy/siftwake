@@ -126,3 +126,38 @@ body:has(.sw-dock, .sw-transport) {
 .sw-transport [data-kit='rocker']:has([aria-pressed='true']) [data-kit='rocker-cap']::after {
   opacity: 1;
 }
+
+.sw-setting {
+  height: 52px;
+}
+.sw-legend {
+  height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: 9px var(--mono);
+}
+.sw-legend output {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.sw-heat-scale {
+  width: 28px;
+  height: 5px;
+  background: linear-gradient(to right, #335ad5, #903483, #ff7e26, #fff2bd);
+}
+.sw-cameras {
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+}
+.sw-cameras [data-kit='check'] {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.sw-cameras [data-kit='label'] {
+  font-size: 10px;
+}

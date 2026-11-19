@@ -5,14 +5,18 @@ import HardwareDock from './HardwareDock';
 import Transport from './Transport';
 import { World, type Scene, type Tool } from './world';
 import Board from './Board';
+import { changeLayer, normal } from './views';
 
 const groups = {
   Materials: ['Sand', 'Water', 'Gravel', 'Smoke', 'Wood', 'Flame'],
   Air: ['Wind', 'Fan', 'Pressure', 'Suction'],
   Build: ['Wall', 'Erase'],
+  Thermal: ['Heat', 'Cool'],
   World: [],
 } as const satisfies Record<string, readonly Tool[]>;
 const swatches: Record<Tool, string> = {
+  Heat: '#eb7648',
+  Cool: '#78baf6',
   Sand: '#e7b565',
   Water: '#469dd3',
   Gravel: '#909a9e',
@@ -39,13 +43,15 @@ export default function Lab() {
   const [paused, setPaused] = useState(true);
   const [tool, setTool] = useState<Tool>('Sand');
   const [brush, setBrush] = useState(3);
-  const [overlay, setOverlay] = useState(false);
+  const [camera, setCamera] = useState(normal);
+  const [reading, setReading] = useState<number | null>(null);
   const [revision, setRevision] = useState(0);
   const [resetId, setResetId] = useState(0);
   const [feedback, setFeedback] = useState('');
   async function load(next: Scene) {
     setWorld(new World(next));
     setScene(next);
+    setReading(null);
     setResetId((n) => n + 1);
     setPaused(true);
     setFeedback('');
@@ -77,9 +83,10 @@ export default function Lab() {
             paused={paused}
             tool={tool}
             brush={brush}
-            overlay={overlay}
+            camera={camera}
             revision={revision}
             sceneName={scene === 'Tunnel' ? 'Comparison tunnel' : 'Blank canvas'}
+            onReading={setReading}
             report={setFeedback}
           />
           <View style={s.dock}>
@@ -90,7 +97,8 @@ export default function Lab() {
               tool={tool}
               brush={brush}
               scene={scene}
-              overlay={overlay}
+              camera={camera}
+              reading={reading}
               feedback={feedback}
               resetId={resetId}
               onTool={async (next) => {
@@ -103,7 +111,9 @@ export default function Lab() {
                 world.strength = next / 100;
               }}
               onScene={load}
-              onOverlay={async () => setOverlay((v) => !v)}
+              onViewChange={async (view, enabled) =>
+                setCamera((previous) => changeLayer(previous, view, enabled))
+              }
             />
           </View>
         </View>

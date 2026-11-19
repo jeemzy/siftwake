@@ -2,13 +2,15 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Canvas, Image, FilterMode, MipmapMode } from '@shopify/react-native-skia';
 import StrokeSurface from './StrokeSurface';
+import type { Layers } from './views';
 import { worldImage } from './pixels';
 import { World, W, H, tile, type Tool } from './world';
 
 type Props = {
   world: World;
   paused: boolean;
-  overlay: boolean;
+  camera: Layers;
+  onReading: (value: number) => void;
   tool: Tool;
   brush: number;
   revision: number;
@@ -19,7 +21,8 @@ type Props = {
 export default function Board({
   world,
   paused,
-  overlay,
+  camera,
+  onReading,
   tool,
   brush,
   revision,
@@ -30,11 +33,20 @@ export default function Board({
   const width = Math.min(size.width, (size.height * W) / H);
   const [pixels] = useState(() => new Uint8Array(W * H * 4));
   const [frame, setFrame] = useState(() => ({
-    image: worldImage(world, overlay, pixels),
+    image: worldImage(world, camera, pixels),
     tick: world.ticks,
   }));
   const last = useRef<{ x: number; y: number } | null>(null);
+  const probe = useRef<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    probe.current = null;
+  }, [world]);
   const invalidate = useRef(() => {});
+  const display = useRef({ camera, tool });
+  useLayoutEffect(() => {
+    display.current = { camera, tool };
+    invalidate.current();
+  }, [camera, tool, revision]);
   useEffect(() => () => frame.image?.dispose(), [frame]);
   useLayoutEffect(() => {
     let pending = 0,
@@ -53,7 +65,15 @@ export default function Board({
       }
       previous = time;
       if (dirty) {
-        setFrame({ image: worldImage(world, overlay, pixels), tick: world.ticks });
+        const { camera, tool } = display.current;
+        setFrame({ image: worldImage(world, camera, pixels), tick: world.ticks });
+        if (
+          probe.current &&
+          (camera.Heat || tool === 'Heat' || tool === 'Cool') &&
+          (paused || world.ticks % 5 === 0)
+        ) {
+          onReading(Math.round(world.temperatureAt(probe.current.x, probe.current.y)));
+        }
         dirty = false;
       }
       if (!paused) pending = requestAnimationFrame(paintFrame);
@@ -67,7 +87,7 @@ export default function Board({
       cancelAnimationFrame(pending);
       invalidate.current = () => {};
     };
-  }, [world, paused, overlay, pixels, revision]);
+  }, [world, paused, pixels, onReading]);
   useLayoutEffect(() => {
     last.current = null;
   }, [world, tool, width]);
@@ -99,6 +119,9 @@ export default function Board({
         else world.paint(tool, px, py, brush);
       }
     }
+    probe.current = { x, y };
+    if (camera.Heat || tool === 'Heat' || tool === 'Cool')
+      onReading(Math.round(world.temperatureAt(x, y)));
     invalidate.current();
   }
   return (

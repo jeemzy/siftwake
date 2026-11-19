@@ -113,9 +113,9 @@ async (page) => {
   await tap(70, 50);
   await button('Step').click();
   await tab('World').click();
-  await button('Pressure overlay').click();
+  await page.getByRole('checkbox', {name:'Pressure', exact:true}).click();
   await page.getByText(/Blue · low/).waitFor();
-  await button('Pressure overlay').click();
+  await page.getByRole('checkbox', {name:'Pressure', exact:true}).click();
   await button('Load tunnel').click();
   await page.getByText('Comparison tunnel', { exact: true }).waitFor();
   if (!initial.equals(await canvas.screenshot())) throw Error('Reloaded preset differs');
@@ -171,7 +171,7 @@ async (page) => {
       [844, 390],
     ]) {
       await page.setViewportSize({ width, height });
-      for (const name of ['Materials', 'Air', 'Build', 'World']) {
+      for (const name of ['Materials', 'Air', 'Build', 'Thermal', 'World']) {
         await tab(name).click();
         const lost = await page.evaluate(
           () =>

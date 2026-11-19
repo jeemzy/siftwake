@@ -14,6 +14,14 @@ export const M = {
   Ember: 6,
   Water: 7,
   WetSand: 8,
+  Ice: 9,
+  Steam: 10,
+  MoltenGlass: 11,
+  Glass: 12,
+  Lava: 13,
+  Rock: 14,
+  Char: 15,
+  Ash: 16,
 } as const;
 export type Tool =
   | 'Sand'
@@ -27,7 +35,9 @@ export type Tool =
   | 'Pressure'
   | 'Suction'
   | 'Wind'
-  | 'Erase';
+  | 'Erase'
+  | 'Heat'
+  | 'Cool';
 export type Scene = 'Tunnel' | 'Blank';
 const dirs = [
   [1, 0],
@@ -38,7 +48,18 @@ const dirs = [
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 export const tile = (x: number, y: number) => (x >> 2) + (y >> 2) * A;
 
+const ambient = 20;
+// Effective game-scale conductivity for the material IDs above.
+const conductivity = [
+  0, 0.09, 0.14, 0.08, 0.055, 0.15, 0.12, 0.2, 0.14, 0.16, 0.07, 0.12, 0.13, 0.14, 0.15, 0.08, 0.07,
+];
 export class World {
+  temperature = new Float32Array(N).fill(ambient);
+  airTemperature = new Float32Array(T).fill(ambient);
+  private airDelta = new Float32Array(T);
+  private heatDelta = new Float32Array(N);
+  private latent = new Float32Array(N);
+
   cells = new Uint8Array(N);
   life = new Uint16Array(N);
   wall = new Uint8Array(T);
@@ -65,6 +86,8 @@ export class World {
   private deposit(x: number, y: number, id: number) {
     const i = x + y * W;
     this.cells[i] = id;
+    this.temperature[i] = id === M.Flame ? 850 : id === M.Smoke ? 48 : ambient;
+    this.latent[i] = 0;
     this.life[i] = id === M.Flame ? 28 + Math.floor(this.random() * 20) : 0;
   }
 
@@ -78,8 +101,9 @@ export class World {
       this.device[t] = this.pressure[t] = this.u[t] = this.v[t] = 0;
       if (t % A) this.u[t - 1] = 0;
       if (t >= A) this.v[t - A] = 0;
+      this.airTemperature[t] = ambient;
       for (let j = y & ~3; j < (y & ~3) + 4; j++)
-        this.cells.fill(0, (x & ~3) + j * W, (x & ~3) + j * W + 4);
+        for (let k = x & ~3; k < (x & ~3) + 4; k++) this.deposit(k, j, M.Empty);
       return;
     }
     if (tool === 'Fan' || tool === 'Pressure' || tool === 'Suction') {
@@ -95,10 +119,22 @@ export class World {
       return;
     }
     if (tool === 'Wind') return;
+    const touchedAir = tool === 'Heat' || tool === 'Cool' ? new Set<number>() : null;
     if (tool === 'Erase') this.wall[t] = this.device[t] = 0;
     for (let j = Math.max(0, y - radius); j <= Math.min(H - 1, y + radius); j++) {
       for (let k = Math.max(0, x - radius); k <= Math.min(W - 1, x + radius); k++) {
         if ((k - x) ** 2 + (j - y) ** 2 > radius ** 2 || this.wall[tile(k, j)]) continue;
+        if (tool === 'Heat' || tool === 'Cool') {
+          const i = k + j * W,
+            t = tile(k, j);
+          const change = tool === 'Heat' ? 220 : -120;
+          if (this.cells[i]) this.temperature[i] = clamp(this.temperature[i] + change, -150, 2300);
+          else if (!touchedAir!.has(t)) {
+            this.airTemperature[t] = clamp(this.airTemperature[t] + change, -150, 2300);
+            touchedAir!.add(t);
+          }
+          continue;
+        }
         if (tool === 'Erase' || !this.cells[k + j * W])
           this.deposit(k, j, tool === 'Erase' ? 0 : M[tool]);
       }
@@ -137,11 +173,11 @@ export class World {
         for (let j = 0; j < height; j++) this.deposit(x, 143 - j, id);
       }
     }
-    for (const start of [42, 77]) {
+    for (const start of [58, 77]) {
       for (let x = start; x < start + 12; x++)
         for (let y = 204; y < 216; y++) this.deposit(x, y, M.Wood);
     }
-    for (let x = 43; x < 54; x++) this.deposit(x, 203, M.Flame);
+    for (let x = 59; x < 70; x++) this.deposit(x, 203, M.Flame);
   }
 
   private air() {
@@ -149,14 +185,7 @@ export class World {
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         const m = this.cells[x + y * W];
-        if (
-          m === M.Sand ||
-          m === M.Gravel ||
-          m === M.Wood ||
-          m === M.Ember ||
-          m === M.Water ||
-          m === M.WetSand
-        )
+        if (m && m !== M.Flame && m !== M.Smoke && m !== M.Steam)
           this.openness[tile(x, y)] -= 0.061;
       }
     for (let t = 0; t < T; t++) {
@@ -221,6 +250,12 @@ export class World {
       if (displaced !== M.Water || !sinks || j !== i + W || this.moved[j] === this.ticks)
         return false;
     }
+    const previousTemp = this.temperature[j],
+      previousLatent = this.latent[j];
+    this.temperature[j] = this.temperature[i];
+    this.latent[j] = this.latent[i];
+    this.temperature[i] = previousTemp;
+    this.latent[i] = previousLatent;
     this.cells[j] = this.cells[i];
     this.life[j] = this.life[i];
     this.moved[j] = this.ticks;
@@ -243,6 +278,9 @@ export class World {
         if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
         const grain = nx + ny * W;
         if (this.cells[grain] !== M.Sand) continue;
+        this.temperature[grain] = (this.temperature[i] + this.temperature[grain]) * 0.5;
+        this.temperature[i] = ambient;
+        this.latent[i] = this.latent[grain] = 0;
         this.cells[i] = M.Empty;
         this.cells[grain] = M.WetSand;
         this.moved[grain] = this.ticks;
@@ -251,7 +289,7 @@ export class World {
     }
   }
 
-  private flowWater(i: number, x: number, y: number) {
+  private flowLiquid(i: number, x: number, y: number) {
     if (this.move(i, x, y + 1)) return;
     const first = this.random() < 0.5 ? 1 : -1;
     for (const dx of [first, -first]) {
@@ -263,18 +301,125 @@ export class World {
     if (!this.move(i, x + first, y)) this.move(i, x - first, y);
   }
 
-  private burn(i: number, x: number, y: number) {
-    for (const [dx, dy] of dirs) {
-      const nx = x + dx,
-        ny = y + dy;
-      if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
-      const j = nx + ny * W;
-      if (this.cells[j] === M.Wood) {
-        this.cells[j] = M.Ember;
-        this.life[j] = 90 + Math.floor(this.random() * 80);
-        this.moved[j] = this.ticks;
+  temperatureAt(x: number, y: number) {
+    const i = x + y * W;
+    return this.cells[i] ? this.temperature[i] : this.airTemperature[tile(x, y)];
+  }
+
+  private transferHeat() {
+    const air = this.airTemperature,
+      temp = this.temperature,
+      delta = this.heatDelta;
+    delta.fill(0);
+    this.airDelta.fill(0);
+    for (let t = 0; t < T; t++) {
+      if (this.wall[t]) continue;
+      // Transport excess heat through the same faces used by the pressure solver.
+      for (let axis = 0; axis < 2; axis++) {
+        const j = axis ? t + A : t + 1;
+        if ((!axis && t % A === A - 1) || j >= T || this.wall[j]) continue;
+        const speed = axis ? this.v[t] : this.u[t];
+        const flux =
+          0.035 * (air[t] - air[j]) + 0.033 * speed * ((speed > 0 ? air[t] : air[j]) - ambient);
+        this.airDelta[t] -= flux;
+        this.airDelta[j] += flux;
       }
     }
+    for (let i = 0; i < N; i++) {
+      const m = this.cells[i];
+      if (!m) continue;
+      const x = i % W,
+        t = tile(x, Math.floor(i / W));
+      const toAir = (temp[i] - air[t]) * (m === M.Flame ? 0.065 : 0.009);
+      delta[i] -= toAir;
+      this.airDelta[t] += toAir / 16;
+      for (let axis = 0; axis < 2; axis++) {
+        const j = axis ? i + W : i + 1;
+        if ((!axis && x === W - 1) || j >= N || !this.cells[j]) continue;
+        const flow = (temp[i] - temp[j]) * Math.min(conductivity[m], conductivity[this.cells[j]]);
+        delta[i] -= flow;
+        delta[j] += flow;
+      }
+    }
+    for (let t = 0; t < T; t++)
+      air[t] = clamp(ambient + (air[t] + this.airDelta[t] - ambient) * 0.999, -150, 2300);
+    for (let i = 0; i < N; i++) if (this.cells[i]) temp[i] = clamp(temp[i] + delta[i], -150, 2300);
+  }
+
+  // Store energy at the transition temperature until enough has accumulated.
+  private phase(i: number, energy: number, threshold: number, cost: number, product: number) {
+    const excess = energy - threshold;
+    this.temperature[i] = threshold;
+    this.latent[i] = excess;
+    if (Math.abs(excess) < cost) return;
+    this.temperature[i] += excess - Math.sign(excess) * cost;
+    this.latent[i] = 0;
+    this.cells[i] = product;
+  }
+
+  private reactions() {
+    for (let i = 0; i < N; i++) {
+      const m = this.cells[i];
+      if (!m) continue;
+      const e = this.temperature[i] + this.latent[i];
+      this.temperature[i] = e;
+      this.latent[i] = 0;
+      if (m === M.Water && e <= 0) this.phase(i, e, 0, 24, M.Ice);
+      else if (m === M.Ice && e >= 0) this.phase(i, e, 0, 24, M.Water);
+      else if (m === M.Water && e >= 100) this.phase(i, e, 100, 65, M.Steam);
+      else if (m === M.Steam && e <= 100) this.phase(i, e, 100, 65, M.Water);
+      else if (m === M.WetSand && e >= 100) {
+        const x = i % W,
+          y = Math.floor(i / W);
+        for (const [dx, dy] of dirs) {
+          const nx = x + dx,
+            ny = y + dy,
+            j = nx + ny * W;
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H || this.wall[tile(nx, ny)] || this.cells[j])
+            continue;
+          this.phase(i, e, 100, 65, M.Sand);
+          if (this.cells[i] === M.Sand) {
+            this.deposit(nx, ny, M.Steam);
+            this.temperature[j] = 100;
+          }
+          break;
+        }
+      } else if ((m === M.Sand || m === M.Glass) && e >= 1500)
+        this.phase(i, e, 1500, 90, M.MoltenGlass);
+      else if (m === M.MoltenGlass && e <= 1450) this.phase(i, e, 1450, 90, M.Glass);
+      else if ((m === M.Gravel || m === M.Rock) && e >= 1050) this.phase(i, e, 1050, 80, M.Lava);
+      else if (m === M.Lava && e <= 1000) this.phase(i, e, 1000, 80, M.Rock);
+      else if (m === M.Wood && e >= 155) {
+        this.cells[i] = M.Char;
+        this.life[i] = 120 + Math.floor(this.random() * 60);
+      } else if (m === M.Char || m === M.Ember || m === M.Flame) {
+        const x = i % W;
+        const neighbors = [x ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W];
+        const wet = neighbors.some((j) => this.cells[j] === M.Water);
+        if ((wet || e < 125) && (m === M.Ember || m === M.Flame)) {
+          this.cells[i] = m === M.Ember ? M.Char : M.Smoke;
+          this.temperature[i] = Math.min(e, 95);
+        } else if (
+          m === M.Char &&
+          !wet &&
+          e >= 210 &&
+          neighbors.some(
+            (j) =>
+              j >= 0 &&
+              j < N &&
+              !this.wall[tile(j % W, Math.floor(j / W))] &&
+              (this.cells[j] === M.Empty || this.cells[j] === M.Flame || this.cells[j] === M.Smoke),
+          )
+        ) {
+          this.cells[i] = M.Ember;
+        } else if (m === M.Ember || m === M.Flame) {
+          this.temperature[i] += 0.22 * ((m === M.Flame ? 950 : 780) - e);
+        }
+      }
+    }
+  }
+
+  private burn(i: number, x: number, y: number) {
     if (
       this.cells[i] === M.Ember &&
       y > 0 &&
@@ -285,30 +430,41 @@ export class World {
       this.deposit(x, y - 1, this.random() < 0.68 ? M.Flame : M.Smoke);
       this.moved[i - W] = this.ticks;
     }
-    if (--this.life[i] === 0) this.cells[i] = this.cells[i] === M.Flame ? M.Smoke : M.Empty;
+    if (--this.life[i] === 0) this.cells[i] = this.cells[i] === M.Flame ? M.Smoke : M.Ash;
   }
 
   step() {
     this.ticks++;
-    this.hydrateSand();
     this.air();
+    this.transferHeat();
+    this.reactions();
+    this.hydrateSand();
     const reverse = this.ticks % 2 === 0;
     for (let y = H - 1; y >= 0; y--)
       for (let column = 0; column < W; column++) {
         const x = reverse ? W - 1 - column : column,
           i = x + y * W,
           m = this.cells[i];
-        if (!m || m === M.Wood || this.moved[i] === this.ticks) continue;
+        if (
+          !m ||
+          m === M.Wood ||
+          m === M.Char ||
+          m === M.Rock ||
+          m === M.Glass ||
+          m === M.Ice ||
+          this.moved[i] === this.ticks
+        )
+          continue;
         if (m === M.Ember || m === M.Flame) this.burn(i, x, y);
         if (m === M.Ember) continue;
-        if (m === M.Water) {
-          this.flowWater(i, x, y);
+        if (m === M.Water || m === M.MoltenGlass || m === M.Lava) {
+          this.flowLiquid(i, x, y);
           continue;
         }
         const t = tile(x, y);
         const vx = (this.u[t] + (t % A ? this.u[t - 1] : 0)) * 0.5;
         const vy = (this.v[t] + (t >= A ? this.v[t - A] : 0)) * 0.5;
-        if (m === M.Smoke || m === M.Flame) {
+        if (m === M.Smoke || m === M.Flame || m === M.Steam) {
           const dx = this.random() < Math.min(1, Math.abs(vx) * 1.6) ? Math.sign(vx) : 0;
           const rise = vy - (m === M.Smoke ? 0.2 : 0.15);
           const dy = this.random() < Math.min(1, Math.abs(rise)) ? Math.sign(rise) : 0;
