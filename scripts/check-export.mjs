@@ -11,7 +11,7 @@ const manifest = JSON.parse(readFileSync(resolve(ota, 'metadata.json'))).fileMet
 const files = new Set(manifest.assets.map((asset) => asset.path));
 for (const path of [manifest.bundle, ...files]) assert(statSync(resolve(ota, path)).size > 0, path);
 const panels = [...files].filter((path) => path.endsWith('.html'));
-assert.equal(panels.length, 2);
+assert.equal(panels.length, 1);
 for (const html of panels) {
   const text = readFileSync(resolve(ota, html), 'utf8');
   for (const match of text.matchAll(/(?:src|href)="([^"]+)"/g)) {
@@ -65,6 +65,7 @@ try {
     ['tunnel', '/'],
     ['water', '/'],
     ['cameras', '/'],
+    ['probe', '/'],
     ['ipa-controls', '/panels/'],
   ]) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });

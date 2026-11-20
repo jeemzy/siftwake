@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import HardwareDock from './HardwareDock';
-import Transport from './Transport';
-import { World, type Scene, type Tool } from './world';
+import { World, type Scene, type Tool, type ProbeReading } from './world';
 import Board from './Board';
 import { saveAndRestart } from './updateCheck';
 import { groups, swatches } from './tools';
@@ -28,6 +27,7 @@ export default function Lab() {
   const [tool, setTool] = useState<Tool>(restored?.tool ?? 'Sand');
   const [brush, setBrush] = useState(restored?.brush ?? 3);
   const [camera, setCamera] = useState(restored?.camera ?? normal);
+  const [probe, setProbe] = useState<ProbeReading | null>(null);
   const [reading, setReading] = useState<number | null>(null);
   const [revision, setRevision] = useState(0);
   const [feedback, setFeedback] = useState('');
@@ -138,26 +138,6 @@ export default function Lab() {
     <SafeAreaProvider style={s.root}>
       <SafeAreaView style={s.screen}>
         <View style={s.layout}>
-          <View style={s.header}>
-            <Text accessibilityRole="header" style={s.logo}>
-              Siftwake
-            </Text>
-            <View style={s.transport}>
-              <Transport
-                dom={panelProps}
-                paused={paused}
-                onPlayback={async () => {
-                  if (!locked.current) setPaused((v) => !v);
-                }}
-                onStep={async () => {
-                  if (paused && !locked.current) {
-                    world.step();
-                    setRevision((n) => n + 1);
-                  }
-                }}
-              />
-            </View>
-          </View>
           {(notice || (ready && !later)) && (
             <View style={s.notice}>
               <Text style={s.noticeText}>
@@ -187,12 +167,24 @@ export default function Lab() {
             camera={camera}
             revision={revision}
             sceneName={scene === 'Tunnel' ? 'Comparison tunnel' : 'Blank canvas'}
+            onProbe={setProbe}
             onReading={setReading}
             report={setFeedback}
           />
           <View style={s.dock}>
             <HardwareDock
               dom={panelProps}
+              paused={paused}
+              onPlayback={async () => {
+                if (!locked.current) setPaused((v) => !v);
+              }}
+              onStep={async () => {
+                if (paused && !locked.current) {
+                  world.step();
+                  setRevision((n) => n + 1);
+                }
+              }}
+              probe={probe}
               groups={groups}
               swatches={swatches}
               tool={tool}
@@ -231,6 +223,9 @@ export default function Lab() {
               }}
             />
           </View>
+          <Text accessibilityRole="header" style={s.logo}>
+            Siftwake
+          </Text>
         </View>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -263,8 +258,6 @@ const s = StyleSheet.create({
     paddingVertical: 5,
     gap: 6,
   },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  logo: { flex: 1, color: '#1b1b19', fontSize: 28, fontWeight: '800', letterSpacing: -1.6 },
-  transport: { width: 148, height: 48 },
-  dock: { height: 201 },
+  logo: { color: '#63655f', textAlign: 'center', fontSize: 11, lineHeight: 14, fontWeight: '600' },
+  dock: { height: 255 },
 });

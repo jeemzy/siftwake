@@ -20,15 +20,19 @@ async (page) => {
         Materials: ['Sand'],
         Air: ['Fan'],
         Build: ['Wall'],
-        Thermal: ['Heat', 'Cool'],
+        Thermal: ['Heat', 'Cool', 'Probe'],
         World: [],
       },
       tool: 'Sand',
       camera: { Pressure: false, Air: false, Heat: false },
       reading: null,
+      probe: null,
       swatches: {},
       brush: 1,
-      category:'Materials', power:55, sceneGeneration:0, updateReady:false,
+      category: 'Materials',
+      power: 55,
+      sceneGeneration: 0,
+      updateReady: false,
       scene: 'Blank',
       feedback: '',
       paused: true,
@@ -44,9 +48,16 @@ async (page) => {
         const message = JSON.parse(raw);
         if (message.type !== '$$native_action') return;
         const { actionId, uid, args } = message.data;
-        if(actionId==='onPlayback'){props.paused=!props.paused;window.transportActions.push(actionId);}
-        if(actionId==='onStep')window.transportActions.push(actionId);
-        if (actionId === 'onCategory') props.category=args[0];
+        if (actionId === 'onPlayback') {
+          props.paused = !props.paused;
+          window.transportActions.push(actionId);
+        }
+        if (actionId === 'onStep') window.transportActions.push(actionId);
+        if (actionId === 'onTool') {
+          props.tool = args[0];
+          props.probe = { temperature: 155, pressure: 0.01, speed: 1.54, direction: 'E' };
+        }
+        if (actionId === 'onCategory') props.category = args[0];
         if (actionId === 'onViewChange') {
           window.observedActions.push(args);
           const [key, enabled] = args;
@@ -65,16 +76,23 @@ async (page) => {
     await page.goto(url);
     const world = page.getByRole('tab', { name: 'World', exact: true });
     await page.locator('[data-skin=hardware]').waitFor();
-    if (!(await world.count())) {
-      const btn=name=>page.getByRole('button',{name,exact:true});
-      await btn('Play').click();await btn('Stop').waitFor();
-      if(!await btn('Step').isDisabled())throw Error('Packaged Step enabled while playing');
-      await btn('Stop').click();await btn('Play').waitFor();await btn('Step').click();
-      await page.waitForFunction(()=>window.transportActions.length===3);
-      transport=await page.evaluate(()=>window.transportActions);
-      if(transport.join(',')!=='onPlayback,onPlayback,onStep')throw Error('Packaged transport bridge failed');
-      continue;
-    }
+    const btn = (name) => page.getByRole('button', { name, exact: true });
+    await btn('Play').click();
+    await btn('Stop').waitFor();
+    if (!(await btn('Step').isDisabled())) throw Error('Packaged Step enabled while playing');
+    await btn('Stop').click();
+    await btn('Play').waitFor();
+    await btn('Step').click();
+    await page.waitForFunction(() => window.transportActions.length === 3);
+    transport = await page.evaluate(() => window.transportActions);
+    if (transport.join(',') !== 'onPlayback,onPlayback,onStep')
+      throw Error('Packaged transport bridge failed');
+    await page.getByRole('tab', { name: 'Thermal', exact: true }).click();
+    await btn('Probe').click();
+    await page.getByRole('group', { name: 'Probe readings' }).waitFor();
+    await page.waitForFunction(
+      () => document.querySelector('.sw-readings output')?.textContent === '155°C',
+    );
     await world.click();
     const check = (name) => page.getByRole('checkbox', { name, exact: true });
     const clicks = ['Pressure', 'Air', 'Heat', 'Pressure', 'Normal'];
@@ -98,18 +116,27 @@ async (page) => {
         timeout: 2500,
       });
       // A native action is posted before React commits the echoed props in the DOM panel.
-      await page.waitForFunction(expected => {
-        const controls = [...document.querySelectorAll('[data-kit="checkbox"]')];
-        return controls.length === 4 && controls.every(control =>
-          (control.getAttribute('aria-checked') === 'true') === expected.includes(control.getAttribute('aria-label'))
-        );
-      }, states[i], {timeout:2500});
+      await page.waitForFunction(
+        (expected) => {
+          const controls = [...document.querySelectorAll('[data-kit="checkbox"]')];
+          return (
+            controls.length === 4 &&
+            controls.every(
+              (control) =>
+                (control.getAttribute('aria-checked') === 'true') ===
+                expected.includes(control.getAttribute('aria-label')),
+            )
+          );
+        },
+        states[i],
+        { timeout: 2500 },
+      );
     }
     const actual = await page.evaluate(() => window.observedActions);
     if (JSON.stringify(actual) !== JSON.stringify(expected))
       throw Error('Unexpected bridge payload: ' + JSON.stringify(actual));
-    dock=actual;
+    dock = actual;
   }
-  if(!transport || !dock)throw Error('Missing SPEC-01 panel');
-  return {dock,transport};
-}
+  if (!transport || !dock) throw Error('Missing SPEC-01 panel');
+  return { dock, transport };
+};

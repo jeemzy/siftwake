@@ -4,7 +4,7 @@ import { Canvas, Image, FilterMode, MipmapMode } from '@shopify/react-native-ski
 import StrokeSurface from './StrokeSurface';
 import type { Layers } from './views';
 import { worldImage } from './pixels';
-import { World, W, H, tile, type Tool } from './world';
+import { World, W, H, tile, type Tool, type ProbeReading } from './world';
 
 type Props = {
   world: World;
@@ -12,6 +12,7 @@ type Props = {
   locked: React.RefObject<boolean>;
   onStroke: (active: boolean) => void;
   camera: Layers;
+  onProbe: (reading: ProbeReading | null) => void;
   onReading: (value: number) => void;
   tool: Tool;
   brush: number;
@@ -27,6 +28,7 @@ export default function Board({
   onStroke,
   camera,
   onReading,
+  onProbe,
   tool,
   brush,
   revision,
@@ -45,6 +47,13 @@ export default function Board({
   useLayoutEffect(() => {
     probe.current = null;
   }, [world]);
+  const [pin, setPin] = useState<{ x: number; y: number } | null>(null);
+  const pinRef = useRef(pin);
+  useLayoutEffect(() => {
+    pinRef.current = null;
+    setPin(null);
+    onProbe(null);
+  }, [world, tool, onProbe]);
   const invalidate = useRef(() => {});
   const display = useRef({ camera, tool });
   useLayoutEffect(() => {
@@ -72,11 +81,16 @@ export default function Board({
         const { camera, tool } = display.current;
         setFrame({ image: worldImage(world, camera, pixels), tick: world.ticks });
         if (
+          tool !== 'Probe' &&
           probe.current &&
           (camera.Heat || tool === 'Heat' || tool === 'Cool') &&
           (paused || world.ticks % 5 === 0)
         ) {
           onReading(Math.round(world.temperatureAt(probe.current.x, probe.current.y)));
+        }
+        const point = pinRef.current;
+        if (tool === 'Probe' && point && (paused || world.ticks % 5 === 0)) {
+          onProbe(world.probeAt(point.x, point.y));
         }
         dirty = false;
       }
@@ -91,7 +105,7 @@ export default function Board({
       cancelAnimationFrame(pending);
       invalidate.current = () => {};
     };
-  }, [world, paused, pixels, onReading]);
+  }, [world, paused, pixels, onReading, onProbe]);
   useLayoutEffect(() => {
     last.current = null;
   }, [world, tool, width]);
@@ -108,6 +122,12 @@ export default function Board({
     const from = start ? null : last.current;
     if (!start && from?.x === x && from.y === y) return;
     last.current = { x, y };
+    if (tool === 'Probe') {
+      pinRef.current = { x, y };
+      setPin(pinRef.current);
+      onProbe(world.probeAt(x, y));
+      return;
+    }
     if (tool === 'Fan' || tool === 'Pressure' || tool === 'Suction') {
       if (!start) return;
       world.paint(tool, x, y);
@@ -160,6 +180,19 @@ export default function Board({
                 )}
               </Canvas>
             </View>
+            {tool === 'Probe' && pin && (
+              <View
+                pointerEvents="none"
+                testID="probe-marker"
+                style={[
+                  s.pin,
+                  {
+                    left: ((pin.x + 0.5) * width) / W - 7,
+                    top: ((pin.y + 0.5) * width) / W - 7,
+                  },
+                ]}
+              />
+            )}
             <StrokeSurface
               sample={sample}
               end={() => {
@@ -174,6 +207,15 @@ export default function Board({
   );
 }
 const s = StyleSheet.create({
+  pin: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: '#f1ffee',
+    backgroundColor: 'transparent',
+  },
   board: {
     flex: 1,
     minHeight: 0,

@@ -7,7 +7,9 @@ import { FlatKnob } from '@/registry/hardware/ui/flat-knob';
 import { Button } from '@/registry/hardware/ui/button';
 import { Checkbox } from '@/registry/hardware/ui/checkbox';
 import { views, isChecked, type Layers, type ViewName } from './views';
-import type { Tool, Scene } from './world';
+import ProbeCartridge from './ProbeCartridge';
+import Transport from './Transport';
+import type { Tool, Scene, ProbeReading } from './world';
 import '../vendor/spec-01/fonts/spec-mono.css';
 import './hardware-layout.css';
 
@@ -19,6 +21,10 @@ type Props = {
   brush: number;
   scene: Scene;
   camera: Layers;
+  probe: ProbeReading | null;
+  paused: boolean;
+  onPlayback: () => Promise<void>;
+  onStep: () => Promise<void>;
   reading: number | null;
   feedback: string;
   category: Group;
@@ -100,14 +106,16 @@ export default function HardwareDock(props: Props) {
           {props.camera.Pressure && <span>Blue · low　Amber · high</span>}
           {props.camera.Air && <span>› flow</span>}
           {isChecked(props.camera, 'Normal') && group === 'World' && (
-            <span>Painting with {props.tool}</span>
+            <span>{props.tool === 'Probe' ? 'Inspecting' : 'Painting with ' + props.tool}</span>
           )}
           {group === 'World' && isChecked(props.camera, 'Normal') && props.updateLabel && (
             <span style={{ marginLeft: 'auto' }}>{props.updateLabel}</span>
           )}
-          {(props.camera.Heat || group === 'Thermal') && props.reading !== null && (
-            <output aria-label="Brush temperature">{props.reading} °C</output>
-          )}
+          {(props.camera.Heat || group === 'Thermal') &&
+            props.tool !== 'Probe' &&
+            props.reading !== null && (
+              <output aria-label="Brush temperature">{props.reading} °C</output>
+            )}
         </div>
         <div className="sw-tools">
           {group === 'World' ? (
@@ -139,18 +147,22 @@ export default function HardwareDock(props: Props) {
   }
   return (
     <Hardware className="sw-dock">
-      <Tabs
-        label="Tool categories"
-        value={category}
-        onValueChange={(next) => {
-          void props.onCategory(next as Group);
-        }}
-        items={(Object.keys(props.groups) as Group[]).map((group) => ({
-          value: group,
-          label: group,
-          body: controls(group),
-        }))}
-      />
+      <ProbeCartridge active={props.tool === 'Probe'} reading={props.probe} />
+      <div className="sw-face">
+        <Tabs
+          label="Tool categories"
+          value={category}
+          onValueChange={(next) => {
+            void props.onCategory(next as Group);
+          }}
+          items={(Object.keys(props.groups) as Group[]).map((group) => ({
+            value: group,
+            label: group,
+            body: controls(group),
+          }))}
+        />
+        <Transport paused={props.paused} onPlayback={props.onPlayback} onStep={props.onStep} />
+      </div>
     </Hardware>
   );
 }

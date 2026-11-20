@@ -37,7 +37,10 @@ export type Tool =
   | 'Wind'
   | 'Erase'
   | 'Heat'
-  | 'Cool';
+  | 'Cool'
+  | 'Probe';
+
+export type ProbeReading = { temperature: number; pressure: number; speed: number; direction: string };
 export type Scene = 'Tunnel' | 'Blank';
 const dirs = [
   [1, 0],
@@ -166,7 +169,7 @@ export class World {
     this.life[i] = id === M.Flame ? 28 + Math.floor(this.random() * 20) : 0;
   }
 
-  paint(tool: Tool, x: number, y: number, radius = 3) {
+  paint(tool: Exclude<Tool, 'Probe'>, x: number, y: number, radius = 3) {
     x = Math.floor(x);
     y = Math.floor(y);
     if (x < 0 || y < 0 || x >= W || y >= H) return;
@@ -376,6 +379,21 @@ export class World {
       if (this.move(i, nx, y + 1)) return;
     }
     if (!this.move(i, x + first, y)) this.move(i, x - first, y);
+  }
+
+  probeAt(x: number, y: number): ProbeReading {
+    const t = tile(x, y);
+    // Cell-centred velocity uses the same two faces per axis as the airflow overlay.
+    const u = (this.u[t] + (t % A ? this.u[t - 1] : 0)) / 2;
+    const v = (this.v[t] + (t >= A ? this.v[t - A] : 0)) / 2;
+    const speed = Math.round(Math.hypot(u, v) * 100) / 100;
+    const sector = (Math.round(Math.atan2(v, u) / (Math.PI / 4)) + 8) % 8;
+    return {
+      temperature: Math.round(this.temperatureAt(x, y)),
+      pressure: Math.round(this.pressure[t] * 100) / 100,
+      speed,
+      direction: speed ? ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'][sector] : '',
+    };
   }
 
   temperatureAt(x: number, y: number) {
