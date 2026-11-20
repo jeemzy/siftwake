@@ -1,7 +1,6 @@
 import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
 import { writeSlot, readSlots, type Loaded, type Session } from './checkpoint';
 let db: SQLiteDatabase | null = null;
-export const persists = true;
 export function loadSession(): Loaded {
   try {
     db = openDatabaseSync('siftwake-world.db');

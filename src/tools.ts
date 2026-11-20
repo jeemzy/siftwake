@@ -1,12 +1,12 @@
-import type { Tool } from './world';
+import type { BuiltinTool } from './world';
 export const groups = {
   Materials: ['Sand', 'Water', 'Gravel', 'Smoke', 'Wood', 'Flame'],
   Air: ['Wind', 'Fan', 'Pressure', 'Suction'],
   Build: ['Wall', 'Erase'],
   Thermal: ['Heat', 'Cool', 'Probe'],
   World: [],
-} as const satisfies Record<string, readonly Tool[]>;
-export const swatches: Record<Tool, string> = {
+} as const satisfies Record<string, readonly BuiltinTool[]>;
+export const swatches: Record<BuiltinTool, string> = {
   Probe: '#478679',
   Heat: '#eb7648',
   Cool: '#78baf6',

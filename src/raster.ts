@@ -1,4 +1,5 @@
 import { W, H, A, tile, type World } from './world.ts';
+import { firstCustom } from './materials.ts';
 import type { Layers } from './views';
 const palette = [
   [19, 29, 31],
@@ -110,7 +111,7 @@ export function rasterize(w: World, camera: Layers, pixels: Uint8Array) {
         t = tile(x, y),
         m = w.cells[i],
         d = w.device[t];
-      let [r, g, b] = palette[m];
+      let [r, g, b] = palette[m] ?? w.materialColors[m - firstCustom];
       const grain = ((Math.imul(i + 1231, 16807) >>> 4) % 17) - 8;
       if (m) {
         r += grain;

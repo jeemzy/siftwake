@@ -9,14 +9,18 @@ import { Checkbox } from '@/registry/hardware/ui/checkbox';
 import { views, isChecked, type Layers, type ViewName } from './views';
 import ProbeCartridge from './ProbeCartridge';
 import Transport from './Transport';
-import type { Tool, Scene, ProbeReading } from './world';
+import MaterialEditor from './MaterialEditor';
+import type { BuiltinTool, Tool, Scene, ProbeReading } from './world';
+import type { Material, MaterialDraft, MaterialResult } from './materials';
 import '../vendor/spec-01/fonts/spec-mono.css';
 import './hardware-layout.css';
 
 type Group = 'Materials' | 'Air' | 'Build' | 'World' | 'Thermal';
 type Props = {
-  groups: Record<Group, readonly Tool[]>;
-  swatches: Record<Tool, string>;
+  groups: Record<Group, readonly BuiltinTool[]>;
+  swatches: Record<BuiltinTool, string>;
+  materials: readonly Material[];
+  expanded: boolean;
   tool: Tool;
   brush: number;
   scene: Scene;
@@ -33,6 +37,9 @@ type Props = {
   updateLabel: string;
   updateReady: boolean;
   onRestart: () => Promise<void>;
+  onSave: () => Promise<string>;
+  onEditorVisibility: (visible: boolean) => Promise<void>;
+  onMaterial: (id: number | null, draft: MaterialDraft) => Promise<MaterialResult>;
   onTool: (tool: Tool) => Promise<void>;
   onBrush: (radius: number) => Promise<void>;
   onPower: (power: number) => Promise<void>;
@@ -44,6 +51,17 @@ type Props = {
 
 export default function HardwareDock(props: Props) {
   const { category } = props;
+  const [editor, setEditor] = useState<{ material?: Material } | null>(null);
+  const [saveStatus, setSaveStatus] = useState('');
+  const selected = props.materials.find((material) => material.id === props.tool);
+  function openEditor(material?: Material) {
+    void props.onEditorVisibility(true);
+    setEditor({ material });
+  }
+  function closeEditor() {
+    setEditor(null);
+    void props.onEditorVisibility(false);
+  }
   // Track continuous dial gestures locally while forwarding each detent to the world.
   const [power, setPower] = useState(props.power);
   const [generation, setGeneration] = useState(props.sceneGeneration);
@@ -93,6 +111,9 @@ export default function HardwareDock(props: Props) {
                   {['Fine', 'Medium', 'Wide'][i]}
                 </Button>
               ))}
+              {group === 'Materials' && props.tool === 'Probe' && (
+                <Button onClick={() => openEditor()}>New material</Button>
+              )}
             </>
           )}
         </div>
@@ -105,8 +126,17 @@ export default function HardwareDock(props: Props) {
           )}
           {props.camera.Pressure && <span>Blue · low　Amber · high</span>}
           {props.camera.Air && <span>› flow</span>}
-          {isChecked(props.camera, 'Normal') && group === 'World' && (
-            <span>{props.tool === 'Probe' ? 'Inspecting' : 'Painting with ' + props.tool}</span>
+          {isChecked(props.camera, 'Normal') && group === 'World' && !saveStatus && (
+            <span className="sw-current-tool">
+              {props.tool === 'Probe'
+                ? 'Inspecting'
+                : 'Painting with ' + (selected?.name ?? props.tool)}
+            </span>
+          )}
+          {group === 'World' && (
+            <span className="sw-save-status" role="status">
+              {saveStatus}
+            </span>
           )}
           {group === 'World' && isChecked(props.camera, 'Normal') && props.updateLabel && (
             <span style={{ marginLeft: 'auto' }}>{props.updateLabel}</span>
@@ -121,6 +151,18 @@ export default function HardwareDock(props: Props) {
           {group === 'World' ? (
             <>
               <Button onClick={() => props.onScene(props.scene)}>Reset</Button>
+              <Button
+                onClick={async () => {
+                  setSaveStatus('');
+                  try {
+                    setSaveStatus(await props.onSave());
+                  } catch {
+                    setSaveStatus('World could not be saved.');
+                  }
+                }}
+              >
+                Save
+              </Button>
               {props.updateReady && (
                 <Button onClick={() => props.onRestart()}>Restart to update</Button>
               )}
@@ -146,13 +188,50 @@ export default function HardwareDock(props: Props) {
     );
   }
   return (
-    <Hardware className="sw-dock">
-      <ProbeCartridge active={props.tool === 'Probe'} reading={props.probe} />
+    <Hardware className="sw-dock" data-expanded={props.expanded || undefined}>
+      {category === 'Materials' && props.tool !== 'Probe' ? (
+        <div className="sw-bay sw-material-shelf">
+          {!!props.materials.length && (
+            <>
+              <select
+                aria-label="Custom material"
+                value={selected?.id ?? ''}
+                onChange={(event) => {
+                  if (event.target.value) void props.onTool(Number(event.target.value));
+                }}
+              >
+                <option value="" disabled>
+                  Custom materials
+                </option>
+                {props.materials.map(({ id, name }) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                disabled={!selected}
+                aria-label="Edit material"
+                onClick={() => openEditor(selected)}
+              >
+                Edit
+              </Button>
+            </>
+          )}
+          <Button type="button" onClick={() => openEditor()}>
+            New material
+          </Button>
+        </div>
+      ) : (
+        <ProbeCartridge active={props.tool === 'Probe'} reading={props.probe} />
+      )}
       <div className="sw-face">
         <Tabs
           label="Tool categories"
           value={category}
           onValueChange={(next) => {
+            setSaveStatus('');
             void props.onCategory(next as Group);
           }}
           items={(Object.keys(props.groups) as Group[]).map((group) => ({
@@ -163,6 +242,14 @@ export default function HardwareDock(props: Props) {
         />
         <Transport paused={props.paused} onPlayback={props.onPlayback} onStep={props.onStep} />
       </div>
+      {editor && (
+        <MaterialEditor
+          material={editor.material}
+          catalog={props.materials}
+          onCommit={props.onMaterial}
+          onClose={closeEditor}
+        />
+      )}
     </Hardware>
   );
 }

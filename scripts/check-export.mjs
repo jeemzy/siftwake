@@ -2,6 +2,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, relative, extname, basename, sep } from 'node:path';
 import { createServer } from 'node:http';
 import { runInThisContext } from 'node:vm';
+import { gunzipSync } from 'node:zlib';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
@@ -61,17 +62,31 @@ try {
     channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
     args: ['--enable-unsafe-swiftshader'],
   });
-  for (const [test, path] of [
+  const legacy = gunzipSync(readFileSync('tests/fixtures/world-0.3.0.bin.gz')).toString('base64');
+  for (const [test, path, viewport] of [
     ['tunnel', '/'],
     ['water', '/'],
     ['cameras', '/'],
     ['probe', '/'],
-    ['ipa-controls', '/panels/'],
+    ['material-editor', '/', { width: 375, height: 667 }],
+    ['material-editor', '/', { width: 393, height: 852 }],
+    ['ipa-controls', '/panels/', { width: 375, height: 667 }],
   ]) {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const page = await browser.newPage(
+      viewport
+        ? { viewport, isMobile: true, hasTouch: true }
+        : { viewport: { width: 1280, height: 800 } },
+    );
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.goto('http://127.0.0.1:' + server.address().port + path);
     const run = runInThisContext(readFileSync('tests/' + test + '.playwright.js', 'utf8'));
-    console.log(test, await run(page));
+    console.log(
+      test,
+      viewport ? `${viewport.width}x${viewport.height}` : '',
+      await run(page, legacy),
+    );
+    assert.deepEqual(pageErrors, []);
     await page.close();
   }
 } finally {

@@ -1,29 +1,23 @@
+import {
+  M,
+  contactKey,
+  editMaterial,
+  firstCustom,
+  readMaterialCatalog,
+  type ContactRule,
+  type Material,
+  type MaterialDraft,
+  type MaterialResult,
+} from './materials.ts';
+export { M } from './materials.ts';
+
 export const W = 160,
   H = 240,
   A = 40,
   B = 60;
 const N = W * H,
   T = A * B;
-export const M = {
-  Empty: 0,
-  Sand: 1,
-  Gravel: 2,
-  Smoke: 3,
-  Wood: 4,
-  Flame: 5,
-  Ember: 6,
-  Water: 7,
-  WetSand: 8,
-  Ice: 9,
-  Steam: 10,
-  MoltenGlass: 11,
-  Glass: 12,
-  Lava: 13,
-  Rock: 14,
-  Char: 15,
-  Ash: 16,
-} as const;
-export type Tool =
+export type BuiltinTool =
   | 'Sand'
   | 'Water'
   | 'Gravel'
@@ -39,8 +33,14 @@ export type Tool =
   | 'Heat'
   | 'Cool'
   | 'Probe';
+export type Tool = BuiltinTool | number;
 
-export type ProbeReading = { temperature: number; pressure: number; speed: number; direction: string };
+export type ProbeReading = {
+  temperature: number;
+  pressure: number;
+  speed: number;
+  direction: string;
+};
 export type Scene = 'Tunnel' | 'Blank';
 const dirs = [
   [1, 0],
@@ -56,6 +56,25 @@ const ambient = 20;
 const conductivity = [
   0, 0.09, 0.14, 0.08, 0.055, 0.15, 0.12, 0.2, 0.14, 0.16, 0.07, 0.12, 0.13, 0.14, 0.15, 0.08, 0.07,
 ];
+const builtinDensity = [0, 60, 82, 5, 30, 3, 45, 35, 72, 32, 7, 75, 72, 85, 95, 38, 20];
+const fixed = new Set<number>([M.Wood, M.Char, M.Rock, M.Glass, M.Ice, M.Ember]);
+
+// Escaping non-ASCII code units keeps the appended JSON portable across JS runtimes.
+function catalogBytes(catalog: readonly Material[]) {
+  const json = JSON.stringify(catalog).replace(
+    /[\u007f-\uffff]/g,
+    (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'),
+  );
+  return Uint8Array.from(json, (c) => c.charCodeAt(0));
+}
+
+function catalogText(bytes: Uint8Array) {
+  let text = '';
+  for (let offset = 0; offset < bytes.length; offset += 8192)
+    text += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  return text;
+}
+
 export class World {
   temperature = new Float32Array(N).fill(ambient);
   airTemperature = new Float32Array(T).fill(ambient);
@@ -73,10 +92,62 @@ export class World {
   v = new Float32Array(T); // Velocity through the lower face.
   private openness = new Float32Array(T);
   private moved = new Uint32Array(N);
+  private reacted = new Uint8Array(N);
   private seed = 139729;
   ticks = 0;
   strength = 0.55;
   edits = 0;
+  private catalog: readonly Material[] = [];
+  private contacts = new Map<number, { owner: number; rule: ContactRule }>();
+  private contactMaterials = new Set<number>();
+  private customColors: readonly (readonly number[])[] = [];
+
+  get customMaterials() {
+    return this.catalog;
+  }
+
+  get materialColors() {
+    return this.customColors;
+  }
+
+  private custom(id: number): Material | undefined {
+    return id >= firstCustom ? this.catalog[id - firstCustom] : undefined;
+  }
+
+  hasCustomMaterial(id: number) {
+    return Number.isInteger(id) && this.custom(id) !== undefined;
+  }
+
+  private setCatalog(catalog: readonly Material[]) {
+    this.catalog = catalog;
+    this.contacts = new Map();
+    this.contactMaterials = new Set();
+    this.customColors = catalog.map(({ color }) =>
+      [1, 3, 5].map((i) => Number.parseInt(color.slice(i, i + 2), 16)),
+    );
+    for (const { id, rules } of catalog)
+      for (const rule of rules) {
+        this.contacts.set(contactKey(id, rule.with), { owner: id, rule });
+        this.contactMaterials.add(id);
+        this.contactMaterials.add(rule.with);
+      }
+  }
+
+  saveMaterial(id: number | null, draft: MaterialDraft): MaterialResult {
+    const result = editMaterial(this.catalog, id, draft);
+    if ('errors' in result) return result;
+    const next = [...this.catalog];
+    next[result.material.id - firstCustom] = result.material;
+    this.setCatalog(next);
+    this.edits++;
+    return { id: result.material.id };
+  }
+
+  reset(scene: Scene) {
+    const world = new World(scene);
+    world.setCatalog(this.catalog);
+    return world;
+  }
 
   private persistedFields() {
     return [
@@ -94,13 +165,16 @@ export class World {
     ];
   }
 
-  // Version 1 binary layout. Append a migration before changing field order or material IDs.
+  // V2 appends the catalog to the unchanged 0.3.0 header and typed arrays.
   snapshot(): Uint8Array {
     const fields = this.persistedFields();
-    const bytes = new Uint8Array(32 + fields.reduce((size, field) => size + field.byteLength, 0));
+    const catalog = this.catalog.length ? catalogBytes(this.catalog) : null;
+    const bytes = new Uint8Array(
+      32 + fields.reduce((size, field) => size + field.byteLength, 0) + (catalog?.length ?? 0),
+    );
     const header = new DataView(bytes.buffer);
     header.setUint32(0, 0x53494654);
-    header.setUint32(4, 1);
+    header.setUint32(4, catalog ? 2 : 1);
     header.setUint16(8, W);
     header.setUint16(10, H);
     header.setFloat64(12, this.ticks);
@@ -111,17 +185,23 @@ export class World {
       bytes.set(new Uint8Array(field.buffer, field.byteOffset, field.byteLength), offset);
       offset += field.byteLength;
     }
+    if (catalog) bytes.set(catalog, offset);
     return bytes;
   }
 
   static restore(bytes: Uint8Array) {
+    if (bytes.length < 32) throw Error('Unsupported world checkpoint');
     const world = new World();
     const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const fields = world.persistedFields();
+    const version = header.getUint32(4);
+    const baseLength = 32 + fields.reduce((n, f) => n + f.byteLength, 0);
     if (
-      bytes.length !== 32 + fields.reduce((n, f) => n + f.byteLength, 0) ||
+      !(
+        (version === 1 && bytes.length === baseLength) ||
+        (version === 2 && bytes.length > baseLength)
+      ) ||
       header.getUint32(0) !== 0x53494654 ||
-      header.getUint32(4) !== 1 ||
       header.getUint16(8) !== W ||
       header.getUint16(10) !== H
     )
@@ -137,13 +217,15 @@ export class World {
       world.strength > 1
     )
       throw Error('Invalid world checkpoint');
+    if (version === 2)
+      world.setCatalog(readMaterialCatalog(catalogText(bytes.subarray(baseLength))));
     let offset = 32;
     for (const field of fields) {
       new Uint8Array(field.buffer).set(bytes.subarray(offset, offset + field.byteLength));
       offset += field.byteLength;
     }
     if (
-      world.cells.some((id) => id > M.Ash) ||
+      world.cells.some((id) => id >= firstCustom + world.catalog.length) ||
       world.device.some((id) => id > 6) ||
       world.wall.some((id) => id > 1) ||
       fields.some((f) => f instanceof Float32Array && !f.every(Number.isFinite))
@@ -173,6 +255,7 @@ export class World {
     x = Math.floor(x);
     y = Math.floor(y);
     if (x < 0 || y < 0 || x >= W || y >= H) return;
+    if (typeof tool === 'number' && !this.hasCustomMaterial(tool)) return;
     this.edits++;
     const t = tile(x, y);
     if (tool === 'Wall') {
@@ -215,7 +298,11 @@ export class World {
           continue;
         }
         if (tool === 'Erase' || !this.cells[k + j * W])
-          this.deposit(k, j, tool === 'Erase' ? 0 : M[tool]);
+          this.deposit(
+            k,
+            j,
+            typeof tool === 'number' ? tool : tool === 'Erase' ? M.Empty : M[tool],
+          );
       }
     }
   }
@@ -265,7 +352,13 @@ export class World {
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         const m = this.cells[x + y * W];
-        if (m && m !== M.Flame && m !== M.Smoke && m !== M.Steam)
+        if (
+          m &&
+          m !== M.Flame &&
+          m !== M.Smoke &&
+          m !== M.Steam &&
+          this.custom(m)?.family !== 'gas'
+        )
           this.openness[tile(x, y)] -= 0.061;
       }
     for (let t = 0; t < T; t++) {
@@ -326,9 +419,19 @@ export class World {
     const j = x + y * W;
     const displaced = this.cells[j];
     if (displaced !== M.Empty) {
-      const sinks = this.cells[i] === M.WetSand || this.cells[i] === M.Gravel;
-      if (displaced !== M.Water || !sinks || j !== i + W || this.moved[j] === this.ticks)
-        return false;
+      const m = this.cells[i];
+      if (this.moved[j] === this.ticks) return false;
+      if (m < firstCustom && displaced < firstCustom) {
+        if (displaced !== M.Water || (m !== M.WetSand && m !== M.Gravel) || j !== i + W)
+          return false;
+      } else {
+        const target = this.custom(displaced);
+        if (fixed.has(displaced) || target?.family === 'solid') return false;
+        const density = this.custom(m)?.density ?? builtinDensity[m];
+        const other = target?.density ?? builtinDensity[displaced];
+        if (!(j - i >= W - 1 && density > other) && !(i - j >= W - 1 && density < other))
+          return false;
+      }
     }
     const previousTemp = this.temperature[j],
       previousLatent = this.latent[j];
@@ -337,10 +440,11 @@ export class World {
     this.temperature[i] = previousTemp;
     this.latent[i] = previousLatent;
     this.cells[j] = this.cells[i];
+    const previousLife = this.life[j];
     this.life[j] = this.life[i];
     this.moved[j] = this.ticks;
     this.cells[i] = displaced;
-    this.life[i] = 0;
+    this.life[i] = displaced === M.Empty ? 0 : previousLife;
     if (displaced !== M.Empty) this.moved[i] = this.ticks;
     return true;
   }
@@ -363,7 +467,46 @@ export class World {
         this.latent[i] = this.latent[grain] = 0;
         this.cells[i] = M.Empty;
         this.cells[grain] = M.WetSand;
-        this.moved[grain] = this.ticks;
+        this.moved[i] = this.moved[grain] = this.ticks;
+        break;
+      }
+    }
+  }
+
+  private customReactions() {
+    if (!this.contacts.size) return;
+    this.reacted.fill(0);
+    const reverse = this.random() < 0.5;
+    for (let index = 0; index < N; index++) {
+      const i = reverse ? N - 1 - index : index;
+      const m = this.cells[i];
+      if (!this.contactMaterials.has(m) || this.reacted[i] || this.moved[i] === this.ticks)
+        continue;
+      const x = i % W,
+        y = Math.floor(i / W);
+      const first = (this.ticks + x + y) % dirs.length;
+      for (let k = 0; k < dirs.length; k++) {
+        const [dx, dy] = dirs[(first + k) % dirs.length];
+        const nx = x + dx,
+          ny = y + dy;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+        const j = nx + ny * W,
+          other = this.cells[j];
+        if (!this.contactMaterials.has(other) || this.reacted[j] || this.moved[j] === this.ticks)
+          continue;
+        const contact = this.contacts.get(contactKey(m, other));
+        if (!contact) continue;
+        const { own, other: result } = contact.rule;
+        const [here, there] = m === contact.owner ? [own, result] : [result, own];
+        if (here !== null && here !== m) {
+          this.deposit(x, y, here);
+          this.moved[i] = this.ticks;
+        }
+        if (there !== null && there !== other) {
+          this.deposit(nx, ny, there);
+          this.moved[j] = this.ticks;
+        }
+        this.reacted[i] = this.reacted[j] = 1;
         break;
       }
     }
@@ -431,7 +574,9 @@ export class World {
       for (let axis = 0; axis < 2; axis++) {
         const j = axis ? i + W : i + 1;
         if ((!axis && x === W - 1) || j >= N || !this.cells[j]) continue;
-        const flow = (temp[i] - temp[j]) * Math.min(conductivity[m], conductivity[this.cells[j]]);
+        const flow =
+          (temp[i] - temp[j]) *
+          Math.min(conductivity[m] ?? 0.09, conductivity[this.cells[j]] ?? 0.09);
         delta[i] -= flow;
         delta[j] += flow;
       }
@@ -534,32 +679,36 @@ export class World {
     this.transferHeat();
     this.reactions();
     this.hydrateSand();
+    this.customReactions();
     const reverse = this.ticks % 2 === 0;
     for (let y = H - 1; y >= 0; y--)
       for (let column = 0; column < W; column++) {
         const x = reverse ? W - 1 - column : column,
           i = x + y * W,
           m = this.cells[i];
+        if (!m) continue;
+        const custom = this.custom(m);
+        const family = custom?.family;
         if (
-          !m ||
           m === M.Wood ||
           m === M.Char ||
           m === M.Rock ||
           m === M.Glass ||
           m === M.Ice ||
+          family === 'solid' ||
           this.moved[i] === this.ticks
         )
           continue;
         if (m === M.Ember || m === M.Flame) this.burn(i, x, y);
         if (m === M.Ember) continue;
-        if (m === M.Water || m === M.MoltenGlass || m === M.Lava) {
+        if (m === M.Water || m === M.MoltenGlass || m === M.Lava || family === 'liquid') {
           this.flowLiquid(i, x, y);
           continue;
         }
         const t = tile(x, y);
         const vx = (this.u[t] + (t % A ? this.u[t - 1] : 0)) * 0.5;
         const vy = (this.v[t] + (t >= A ? this.v[t - A] : 0)) * 0.5;
-        if (m === M.Smoke || m === M.Flame || m === M.Steam) {
+        if (m === M.Smoke || m === M.Flame || m === M.Steam || family === 'gas') {
           const dx = this.random() < Math.min(1, Math.abs(vx) * 1.6) ? Math.sign(vx) : 0;
           const rise = vy - (m === M.Smoke ? 0.2 : 0.15);
           const dy = this.random() < Math.min(1, Math.abs(rise)) ? Math.sign(rise) : 0;
@@ -569,7 +718,13 @@ export class World {
           continue;
         }
         const exposed = y === 0 || !this.cells[i - W];
-        const threshold = m === M.Gravel ? 1.1 : m === M.WetSand ? 0.8 : 0.2;
+        const threshold = custom
+          ? (custom.density / 100) ** 2 + 0.1
+          : m === M.Gravel
+            ? 1.1
+            : m === M.WetSand
+              ? 0.8
+              : 0.2;
         if (
           exposed &&
           Math.abs(vx) > threshold &&

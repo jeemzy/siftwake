@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import HardwareDock from './HardwareDock';
 import { World, type Scene, type Tool, type ProbeReading } from './world';
 import Board from './Board';
 import { saveAndRestart } from './updateCheck';
 import { groups, swatches } from './tools';
-import { loadSession, saveSession, persists } from './storage';
+import { loadSession, saveSession } from './storage';
 import { checkUpdate, applyUpdate, updateLabel } from './ota';
-import type { Editor } from './checkpoint';
+import type { Editor, Session } from './checkpoint';
 import { changeLayer, normal } from './views';
 
 const panelProps = {
@@ -17,6 +17,15 @@ const panelProps = {
   bounces: false,
   style: { flex: 1, backgroundColor: '#efefeb' },
 } as const;
+const editorPanelProps = {
+  ...panelProps,
+  scrollEnabled: true,
+  style: { flex: 1, backgroundColor: 'transparent' },
+} as const;
+
+function checkpointKey({ world, editor }: Session) {
+  return JSON.stringify([world.ticks, world.edits, world.strength, editor]);
+}
 
 export default function Lab() {
   const [loaded] = useState(loadSession);
@@ -37,6 +46,8 @@ export default function Lab() {
   const [later, setLater] = useState(false);
   const [notice, setNotice] = useState(loaded.warning ?? '');
   const [applying, setApplying] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const expandedDock = editorOpen && Platform.OS !== 'web';
   const locked = useRef(false),
     drawing = useRef(false),
     waiting = useRef(false);
@@ -44,16 +55,13 @@ export default function Lab() {
   useLayoutEffect(() => {
     latest.current = { world, editor: { scene, tool, brush, camera, category } };
   }, [world, scene, tool, brush, camera, category]);
-  const saved = useRef<{ world: World; key: string } | null>(null);
+  const saved = useRef<{ world: World; key: string } | null>(
+    loaded.session ? { world: loaded.session.world, key: checkpointKey(loaded.session) } : null,
+  );
   function checkpoint() {
     if (!loaded.writable) throw Error('World storage unavailable');
     const state = latest.current;
-    const key = JSON.stringify([
-      state.world.ticks,
-      state.world.edits,
-      state.world.strength,
-      state.editor,
-    ]);
+    const key = checkpointKey(state);
     if (saved.current?.world === state.world && saved.current.key === key) return;
     saveSession(state);
     saved.current = { world: state.world, key };
@@ -66,7 +74,7 @@ export default function Lab() {
       });
     };
     const save = () => {
-      if (persists && loaded.writable && !locked.current) {
+      if (loaded.writable && !locked.current) {
         try {
           checkpoint();
         } catch {
@@ -75,11 +83,9 @@ export default function Lab() {
       }
     };
     check();
-    const timer = persists
-      ? setInterval(() => {
-          if (!drawing.current) save();
-        }, 15000)
-      : undefined;
+    const timer = setInterval(() => {
+      if (!drawing.current) save();
+    }, 15000);
     const listener = AppState.addEventListener('change', (state) => {
       if (state === 'active') check();
       else save();
@@ -127,7 +133,7 @@ export default function Lab() {
   }
   async function load(next: Scene) {
     if (locked.current) return;
-    setWorld(new World(next));
+    setWorld(world.reset(next));
     setSceneGeneration((n) => n + 1);
     setScene(next);
     setReading(null);
@@ -171,9 +177,11 @@ export default function Lab() {
             onReading={setReading}
             report={setFeedback}
           />
-          <View style={s.dock}>
+          <View style={s.dock} pointerEvents="none" />
+          <View style={[s.dockPanel, expandedDock && s.editorPanel]}>
             <HardwareDock
-              dom={panelProps}
+              dom={expandedDock ? editorPanelProps : panelProps}
+              expanded={expandedDock}
               paused={paused}
               onPlayback={async () => {
                 if (!locked.current) setPaused((v) => !v);
@@ -187,6 +195,7 @@ export default function Lab() {
               probe={probe}
               groups={groups}
               swatches={swatches}
+              materials={world.customMaterials}
               tool={tool}
               brush={brush}
               scene={scene}
@@ -199,6 +208,30 @@ export default function Lab() {
               updateLabel={updateLabel}
               updateReady={ready && later}
               onRestart={restart}
+              onSave={async () => {
+                if (!loaded.writable) return 'Saved world is read-only.';
+                if (locked.current) return 'World is restarting.';
+                try {
+                  checkpoint();
+                  return 'World saved.';
+                } catch {
+                  return 'World could not be saved.';
+                }
+              }}
+              onEditorVisibility={async (visible) => {
+                if (visible) setPaused(true);
+                setEditorOpen(visible);
+              }}
+              onMaterial={async (id, draft) => {
+                if (locked.current) return { errors: { form: 'World is restarting.' } };
+                const result = world.saveMaterial(id, draft);
+                if ('id' in result) {
+                  setTool(result.id);
+                  setRevision((n) => n + 1);
+                  setFeedback('');
+                }
+                return result;
+              }}
               onTool={async (next) => {
                 if (locked.current) return;
                 setTool(next);
@@ -260,4 +293,6 @@ const s = StyleSheet.create({
   },
   logo: { color: '#63655f', textAlign: 'center', fontSize: 11, lineHeight: 14, fontWeight: '600' },
   dock: { height: 255 },
+  dockPanel: { position: 'absolute', left: 8, right: 8, bottom: 25, height: 255 },
+  editorPanel: { top: 5, height: 'auto', zIndex: 10 },
 });

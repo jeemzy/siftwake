@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { World } from '../src/world.ts';
+import { M, World } from '../src/world.ts';
 import { decodeCheckpoint, readSlots } from '../src/checkpoint.ts';
 import { createUpdateCheck } from '../src/updateCheck.ts';
 
@@ -93,11 +93,21 @@ test('restart waits for SQLite commit; an interrupted save preserves both previo
   };
   try {
     const world = new World('Tunnel');
+    const draft = {
+      name: 'Vitreous dye',
+      color: '#6B3FC4',
+      family: 'solid',
+      density: '40',
+      rules: [{ with: M.Water, own: null, other: M.Glass }],
+    };
+    const { id } = world.saveMaterial(null, draft);
+    world.paint(id, 60, 10, 1);
     const save = () => writeSlot(adapter, { world, editor });
     const rows = () => db.prepare('SELECT world,editor FROM checkpoints ORDER BY id DESC').all();
     save();
     world.step();
     save();
+    world.saveMaterial(id, { ...draft, name: 'Glaze' });
     world.step();
     let reloads = 0;
     db.exec(
@@ -113,10 +123,14 @@ test('restart waits for SQLite commit; an interrupted save preserves both previo
       rows().map((r) => decodeCheckpoint(r.world, r.editor).world.ticks),
       [1, 0],
     );
+    assert.equal(readSlots(rows()).session.world.customMaterials[0].name, 'Vitreous dye');
     db.exec('DROP TRIGGER fail_write');
     await saveAndRestart(save, async () => {
       reloads++;
-      assert.deepEqual(readSlots(rows()).session.world.snapshot(), world.snapshot());
+      const reopened = readSlots(rows()).session.world;
+      assert.deepEqual(reopened.snapshot(), world.snapshot());
+      assert.equal(reopened.customMaterials[0].name, 'Glaze');
+      assert.deepEqual(reopened.customMaterials[0].rules, draft.rules);
     });
     assert.equal(reloads, 1);
     assert.equal(rows().length, 2);

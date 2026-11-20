@@ -43,10 +43,16 @@ npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filena
 npx --yes --package @playwright/cli playwright-cli -s=siftwake run-code --filename tests/cameras.playwright.js
 ```
 
-The first milestone runs locally without an Xcode build. The [game specification](SPEC.md) covers the editor, saved worlds, and subsequent iPhone validation.
+The first milestone runs locally without an Xcode build. See the [game specification](SPEC.md) for simulation behavior and iPhone validation.
+
+## Custom materials and saves
+
+Open **Materials → New material**. Give it a name and color, choose how it moves, and set its density from 1 to 100. Use **Add reaction** to pick a contact material and the result for each of the two touching cells. **Create material** selects it for painting. Pick it in the custom palette and choose **Edit** to change it in place. The editor pauses the simulation so you can inspect the result before pressing Step or Play.
+
+**World → Save** writes the current world and custom catalog to the local slot. Siftwake also saves during play and on backgrounding. Reopening restores the saved world paused. The iPhone uses SQLite, and Expo Web uses browser storage.
 
 ## iPhone updates
 
-Install the unsigned IPA from the latest GitHub release. Its production channel checks at launch and when you return to the game, at most once a minute. A downloaded update offers **Restart to update** or **Later**. If you defer it, you can restart from **World**. Restart saves the current world and editor to SQLite and restores it paused. The installed game also checkpoints dirty sessions every 15 seconds and on backgrounding.
+Install the unsigned IPA from the latest GitHub release. Its production channel checks at launch and when you return to the game, at most once a minute. A downloaded update offers **Restart to update** or **Later**. If you defer it, you can restart from **World**. Restart saves the current world and custom catalog to SQLite and restores them paused. The installed game also checkpoints dirty sessions every 15 seconds and on backgrounding.
 
 The Linux publishing workflow tests the game, exports iOS, exercises the exported toolbar, and compares the candidate runtime to the fingerprint attached to the latest iPhone release. Compatible app changes merged to main publish to the linked Expo project using the repository secret EXPO_TOKEN. After a native change, run **Build unsigned iPhone IPA**, install that release, then dispatch **Publish iPhone OTA** or merge the next game change. A previous compatible update can be republished from the Expo dashboard.

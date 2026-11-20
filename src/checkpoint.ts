@@ -19,14 +19,20 @@ export function decodeCheckpoint(blob: Uint8Array, metadata: string): Session {
     !editor ||
     !['Tunnel', 'Blank'].includes(editor.scene) ||
     !Object.hasOwn(groups, editor.category) ||
-    !Object.values(groups)
-      .flat()
-      .some((t) => t === editor.tool) ||
     ![1, 3, 6].includes(editor.brush) ||
     !['Heat', 'Air', 'Pressure'].every((k) => typeof editor.camera?.[k] === 'boolean')
   )
     throw Error('Unrecognized editor checkpoint');
-  return { world: World.restore(blob), editor };
+  const world = World.restore(blob);
+  if (
+    typeof editor.tool === 'number'
+      ? !world.hasCustomMaterial(editor.tool)
+      : !Object.values(groups)
+          .flat()
+          .some((tool) => tool === editor.tool)
+  )
+    throw Error('Unrecognized saved tool');
+  return { world, editor };
 }
 
 export function readSlots(rows: { world: Uint8Array; editor: string }[]): Loaded {
@@ -51,15 +57,18 @@ export function readSlots(rows: { world: Uint8Array; editor: string }[]): Loaded
   };
 }
 
-// Both rows are committed together. An interrupted write keeps the previous slot intact.
+export function encodeCheckpoint({ world, editor }: Session) {
+  return { world: world.snapshot(), editor: JSON.stringify({ version: 1, editor }) };
+}
+
+// Insert and prune together so an interrupted write keeps both previous generations.
 export function writeSlot(
   db: Pick<import('expo-sqlite').SQLiteDatabase, 'withTransactionSync' | 'runSync' | 'execSync'>,
-  { world, editor }: Session,
+  session: Session,
 ) {
-  const blob = world.snapshot();
-  const metadata = JSON.stringify({ version: 1, editor });
+  const { world, editor } = encodeCheckpoint(session);
   db.withTransactionSync(() => {
-    db.runSync('INSERT INTO checkpoints(world,editor) VALUES (?,?)', blob, metadata);
+    db.runSync('INSERT INTO checkpoints(world,editor) VALUES (?,?)', world, editor);
     db.execSync(
       'DELETE FROM checkpoints WHERE id NOT IN (SELECT id FROM checkpoints ORDER BY id DESC LIMIT 2)',
     );
