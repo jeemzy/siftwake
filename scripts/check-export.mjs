@@ -70,9 +70,7 @@ try {
   ]) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto('http://127.0.0.1:' + server.address().port + path);
-    const run = runInThisContext(
-      '(' + readFileSync('tests/' + test + '.playwright.js', 'utf8') + ')',
-    );
+    const run = runInThisContext(readFileSync('tests/' + test + '.playwright.js', 'utf8'));
     console.log(test, await run(page));
     await page.close();
   }
