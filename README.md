@@ -57,6 +57,8 @@ On iPhone, open **Air → Motion** and allow access when prompted. Press **Play*
 
 ## iPhone updates
 
+In LiveContainer, open **Sources → +** and add the [Siftwake source](https://raw.githubusercontent.com/jeemzy/siftwake/main/distribution/livecontainer.json). The source lists stable IPAs newest first. Use **Refresh** in LiveContainer to see newly published releases.
+
 Install the unsigned IPA from the latest GitHub release. Its production channel checks at launch and when you return to the game, at most once a minute. A downloaded update offers **Restart to update** or **Later**. If you defer it, you can restart from **World**. Restart saves the current world and custom catalog to SQLite and restores them paused. The installed game also checkpoints dirty sessions every 15 seconds and on backgrounding.
 
 The Linux publishing workflow tests the game, exports iOS, exercises the exported toolbar, and compares the candidate runtime to the fingerprint attached to the latest iPhone release. Compatible app changes merged to main publish to the linked Expo project using the repository secret EXPO_TOKEN. After a native change, run **Build unsigned iPhone IPA**, install that release, then dispatch **Publish iPhone OTA** or merge the next game change. A previous compatible update can be republished from the Expo dashboard.

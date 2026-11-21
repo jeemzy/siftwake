@@ -89,3 +89,10 @@ jobs:
             --title "Siftwake $(node -p 'require("./app.json").expo.version') for iPhone" \
             --notes "Unsigned device IPA. Production OTA runtime $(cat "$RUNNER_TEMP/ios-runtime.txt")." \
             "$RUNNER_TEMP/Siftwake-unsigned.ipa" "$RUNNER_TEMP/ios-runtime.txt"
+
+  livecontainer-source:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    permissions:
+      contents: write
+    uses: ./.github/workflows/livecontainer-source.yml

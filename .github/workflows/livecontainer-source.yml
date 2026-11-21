@@ -1,0 +1,43 @@
+name: Update LiveContainer source
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: siftwake-livecontainer-source
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Regenerate and publish the source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3; do
+            git fetch --no-tags origin main
+            git switch --detach FETCH_HEAD
+            python3 .github/scripts/update-livecontainer-source.py
+            git add distribution/livecontainer.json
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+            git commit -m 'Update LiveContainer source'
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
