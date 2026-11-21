@@ -92,12 +92,12 @@ async (page) => {
   const moving = await probe(106, 174, 'Airflow');
   await tab('World').click();
   await button('Save').click();
-  // V3 starts with a 36-byte header and 160 × 240 unsigned 16-bit material IDs.
+  // V4 keeps the 36-byte header and 160 × 240 unsigned 16-bit material IDs.
   const materialCounts = (material) =>
     page.evaluate((material) => {
       const raw = atob(JSON.parse(localStorage.getItem('siftwake.world'))[0].world);
       const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
-      if (new DataView(bytes.buffer).getUint32(4) !== 3) throw Error('Expected v3 checkpoint');
+      if (new DataView(bytes.buffer).getUint32(4) !== 4) throw Error('Expected v4 checkpoint');
       const cells = new Uint16Array(bytes.buffer, 36, 160 * 240);
       const counts = [0, 0];
       cells.forEach((id, i) => {

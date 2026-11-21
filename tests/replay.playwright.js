@@ -138,13 +138,13 @@ async (page, legacy, legacyV2) => {
   const [migrated] = JSON.parse(await read());
   const settings = JSON.parse(migrated.editor).editor;
   if (
-    Buffer.from(migrated.world, 'base64').readUInt32BE(4) !== 3 ||
+    Buffer.from(migrated.world, 'base64').readUInt32BE(4) !== 4 ||
     settings.tool !== 255 ||
     JSON.stringify(settings.hotbar) !== '[1,7,2,3,4,5]' ||
     settings.sourceMode ||
     settings.thermalPower !== 100
   )
-    throw Error('Saved migration did not retain the expected v3 defaults');
+    throw Error('Saved migration did not retain the expected bindings and tool settings');
   const beforeFailure = await read();
   await page.evaluate(() => {
     const write = Storage.prototype.setItem;

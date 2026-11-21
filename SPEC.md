@@ -65,7 +65,7 @@ The inventory contains 56 built-ins. On a new world, the six dock keys start wit
 | Engineering | Copper conducts heat. Tin and copper melt and solidify at different temperatures. Exposed wet iron rusts faster in brine. Wax plugs can melt and set again. Oil and cork float on water. |
 | Garden | Soil holds water as mud. Moisture feeds germination and travels through roots and stems. Leaves transpire, reeds grow near water, and damp litter decomposes into compost. |
 
-World format V3 stores 16-bit material IDs. Original materials occupy IDs 1–16, and world-local custom materials retain IDs 17–255, including legacy custom names such as Snow. New built-ins occupy IDs 257–296. ID 256 is reserved. Earlier worlds without saved bindings migrate with the classic Sand, Water, Gravel, Smoke, Wood and Flame keys, full thermal power and brush mode.
+World formats V3 and V4 store 16-bit material IDs. V4 also saves each air tile’s thermal expansion so that a warming chamber resumes at the same point. Versions 1–3 load with their recorded temperature and pressure. Original materials occupy IDs 1–16, and world-local custom materials retain IDs 17–255, including legacy custom names such as Snow. New built-ins occupy IDs 257–296. ID 256 is reserved. Earlier worlds without saved bindings migrate with the classic Sand, Water, Gravel, Smoke, Wood and Flame keys, full thermal power and brush mode.
 
 | Material | Behavior the player should see |
 | --- | --- |
@@ -97,6 +97,8 @@ Overlay a 40 × 60 air grid on the material world. Each air cell covers 4 × 4 m
 | Eraser | Removes materials under the brush and removes a wall or device at the touched tile. Removing a wall reopens its faces on the next tick. |
 
 The world edges are sealed. Placing a wall clears its footprint of loose materials and devices and cancels flow through its faces. Removing it leaves empty material space. Allow one air device per open air tile. A device occupies the air layer and lets material pass. Bound pressure and velocity so a forgotten source remains stable. The overlay shows signed pressure with a neutral midpoint and a legend. Toggling it changes only the display.
+
+Thermal brushes and sources add or remove heat. In air connected by open faces to a board edge, thermal edits and flame leave bulk airflow and pressure alone. Smoke and flame retain their intrinsic rise, and existing wind still carries heat and particles. In a pocket enclosed by Wall tiles, the solver gradually couples air temperature to pressure and local temperature gradients to buoyancy. Opening a wall allows the existing pressure difference to vent. Pneumatic devices, gusts and gas-producing reactions work throughout the board.
 
 ### On-phone editor and persistence
 

@@ -85,7 +85,33 @@ test('v2 preserves all 239 custom IDs, the custom Snow and its Water contact whe
   assert.deepEqual(restored.world.snapshot(), row.world);
 });
 
-test('a corrupt v3 slot falls back without changing either stored generation', () => {
+test('v3 migration keeps the existing chamber pressure and resumes its heater without a second impulse', () => {
+  // The 9fc2c79 writer saved a ten-percent heater after 12 ticks in a sealed tile.
+  const original = fixture('world-9fc2c79-v3.bin.gz');
+  assert.equal(original.readUInt32BE(4), 3);
+  const { world } = decodeCheckpoint(original, meta);
+  const t = tile(82, 82);
+  assert.equal(world.ticks, 12);
+  assert.equal(world.airTemperature[t], 282.2903137207031);
+  assert.equal(world.pressure[t], 2.098322868347168);
+  assert.equal(world.devicePower[t], 10);
+  assert.equal(world.customMaterials[0].name, 'Legacy dye');
+  assert.equal(world.cells[12224], 17);
+  const upgraded = world.snapshot();
+  assert.equal(new DataView(upgraded.buffer).getUint32(4), 4);
+  const restored = World.restore(upgraded);
+  const before = world.pressure[t];
+  world.step();
+  restored.step();
+  assert.ok(world.pressure[t] > before && world.pressure[t] - before < 0.01);
+  for (let n = 0; n < 50; n++) {
+    world.step();
+    restored.step();
+  }
+  assert.deepEqual(world.snapshot(), restored.snapshot());
+});
+
+test('a corrupt v4 slot falls back without changing either stored generation', () => {
   const previous = { world: fixture('world-0.3.0.bin.gz'), editor: meta };
   const previousBytes = Buffer.from(previous.world);
   const expected = World.restore(previous.world).snapshot();
@@ -113,7 +139,7 @@ test('unordered contact keys keep extended IDs distinct from legacy pairs', () =
   assert.equal(contactKey(17, M.Slush), contactKey(M.Slush, 17));
 });
 
-test('invalid editor bindings and an incomplete v3 catalog preserve the previous slot', () => {
+test('invalid editor bindings and an incomplete v4 catalog preserve the previous slot', () => {
   const w = new World();
   const { id } = w.saveMaterial(null, { name: 'Test', color: '#112233', family: 'solid', density: '30', rules: [] });
   assert.equal(id, 17);

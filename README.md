@@ -40,6 +40,8 @@ Select **Thermal → Probe** to view live readings on the cartridge display. In 
 
 Use **Thermal → Heat or Cool** on a material or empty air. Brush edits work while paused. Press Step or Play to conduct heat, blow it downwind and change phase. Ice melts, water boils, steam condenses and wet sand dries. Around 1,050 °C gravel melts into lava, and around 1,500 °C sand melts into glass. Continued heating supplies the energy for each change. Cooling produces solid rock or glass. Sustained heat chars wood, then exposed char burns down to ash. Water can put it out.
 
+Heat, Cool and Flame leave open air calm. A fan or gust can still carry a plume. Build a closed ring with **Wall** to see air pressure rise gradually as the air warms, fall as it cools, and equalize when you open a gap. Probe shows the temperature change as soon as you brush and the chamber response as the simulation advances.
+
 ## Checks
 
 ```sh

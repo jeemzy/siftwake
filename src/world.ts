@@ -58,6 +58,9 @@ for (const material of builtinMaterials) builtinsForMovement[material.id] = mate
 const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : v > hi ? hi : v;
 
 const ambient = 20;
+// A bounded expansion in signed game units. Only changes in this contribution
+// enter the air solver, so holding a temperature cannot pump air indefinitely.
+const thermalPressureAt = (temperature: number) => clamp((temperature - ambient) * 0.004, -2, 2);
 const materialCount = Math.max(...builtinMaterials.map(m => m.id)) + 1;
 const conductivityById = new Float64Array(materialCount).fill(0.09);
 const airFlagsById = new Uint8Array(materialCount).fill(1);
@@ -122,9 +125,12 @@ export class World {
   deviceRadius = new Uint8Array(T);
   deviceMaterial = new Uint16Array(T);
   pressure = new Float32Array(T);
+  private thermalPressure = new Float32Array(T);
   u = new Float32Array(T); // Velocity through the right face.
   v = new Float32Array(T); // Velocity through the lower face.
   private openness = new Float32Array(T);
+  private exteriorAir = new Uint8Array(T);
+  private wallsChanged = true;
   private airFlags = airFlagsById.slice();
   private obstructionCatalog: readonly Material[] | undefined;
   private heatTiles = new Uint8Array(T);
@@ -200,7 +206,7 @@ export class World {
   }
 
   // V1/V2 used one byte per cell. Their remaining fields have the same widths and order.
-  private persistedFields(cells: Uint8Array | Uint16Array = this.cells) {
+  private persistedFields(cells: Uint8Array | Uint16Array = this.cells, version = 4) {
     const common = [
       cells,
       this.life,
@@ -215,7 +221,8 @@ export class World {
       this.moved,
     ];
     if (cells instanceof Uint8Array) return common;
-    return [...common, this.amount, this.aux, this.devicePower, this.deviceRadius, this.deviceMaterial];
+    const devices = [...common, this.amount, this.aux, this.devicePower, this.deviceRadius, this.deviceMaterial];
+    return version >= 4 ? [...devices, this.thermalPressure] : devices;
   }
 
   // V3 records the catalog length, so a truncated tail cannot masquerade as an empty catalog.
@@ -227,7 +234,7 @@ export class World {
     );
     const header = new DataView(bytes.buffer);
     header.setUint32(0, 0x53494654);
-    header.setUint32(4, 3);
+    header.setUint32(4, 4);
     header.setUint16(8, W);
     header.setUint16(10, H);
     header.setFloat64(12, this.ticks);
@@ -249,22 +256,22 @@ export class World {
     const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const version = header.getUint32(4);
     if (
-      (version !== 1 && version !== 2 && version !== 3) ||
-      (version === 3 && bytes.length < 36) ||
+      (version < 1 || version > 4) ||
+      (version >= 3 && bytes.length < 36) ||
       header.getUint32(0) !== 0x53494654 ||
       header.getUint16(8) !== W ||
       header.getUint16(10) !== H
     )
       throw Error('Unsupported world checkpoint');
     const legacyCells = version < 3 ? new Uint8Array(N) : undefined;
-    const fields = world.persistedFields(legacyCells);
+    const fields = world.persistedFields(legacyCells, version);
     let offset = version < 3 ? 32 : 36;
     const baseLength = offset + fields.reduce((n, f) => n + f.byteLength, 0);
     const catalogLength = bytes.length - baseLength;
     if (
       (version === 1 && catalogLength !== 0) ||
       (version === 2 && catalogLength <= 0) ||
-      (version === 3 && catalogLength !== header.getUint32(32))
+      (version >= 3 && catalogLength !== header.getUint32(32))
     )
       throw Error('Invalid world checkpoint length');
     world.ticks = header.getFloat64(12);
@@ -293,6 +300,12 @@ export class World {
           world.devicePower[t] = Math.round(world.strength * 100);
       }
     }
+    if (version < 4) {
+      // Older saves already integrated heat into their stored pressure. Keep
+      // that reading and start responding to subsequent temperature changes.
+      for (let t = 0; t < T; t++)
+        world.thermalPressure[t] = thermalPressureAt(world.airTemperature[t]);
+    }
     const known = (id: number) =>
       id === M.Empty || builtinById(id) !== undefined || world.hasCustomMaterial(id);
     if (
@@ -305,6 +318,7 @@ export class World {
       ) ||
       world.devicePower.some((value) => value > 100) ||
       world.wall.some((id) => id > 1) ||
+      world.thermalPressure.some((value) => Math.abs(value) > 2) ||
       fields.some((f) => f instanceof Float32Array && !f.every(Number.isFinite))
     )
       throw Error('Unreadable world data');
@@ -424,9 +438,10 @@ export class World {
     this.edits++;
     const t = tile(x, y);
     if (tool === 'Wall') {
+      if (!this.wall[t]) this.wallsChanged = true;
       this.wall[t] = 1;
       this.removeDevice(t);
-      this.pressure[t] = this.u[t] = this.v[t] = 0;
+      this.pressure[t] = this.thermalPressure[t] = this.u[t] = this.v[t] = 0;
       if (t % A) this.u[t - 1] = 0;
       if (t >= A) this.v[t - A] = 0;
       this.airTemperature[t] = ambient;
@@ -450,6 +465,7 @@ export class World {
       return;
     }
     if (tool === 'Erase') {
+      if (this.wall[t]) this.wallsChanged = true;
       this.wall[t] = 0;
       this.removeDevice(t);
     }
@@ -506,14 +522,42 @@ export class World {
     for (let x = 59; x < 70; x++) this.deposit(x, 203, M.Flame);
   }
 
-  // Use the realized change so a saturated brush or a steady source cannot pump pressure.
   private changeAirTemperature(t: number, delta: number) {
-    const before = this.airTemperature[t];
-    this.airTemperature[t] = clamp(before + delta, -150, 2300);
-    this.pressure[t] = clamp(this.pressure[t] + (this.airTemperature[t] - before) * 0.008, -12, 12);
+    this.airTemperature[t] = clamp(this.airTemperature[t] + delta, -150, 2300);
+  }
+
+  // Air connected to a board edge behaves like a room at ambient pressure for
+  // thermal forcing. Walls alone seal a vessel. Wind and gas still work outdoors.
+  private findExteriorAir() {
+    this.wallsChanged = false;
+    const outside = this.exteriorAir;
+    outside.fill(0);
+    const queue = new Uint16Array(T);
+    let tail = 0;
+    const visit = (t: number) => {
+      if (this.wall[t] || outside[t]) return;
+      outside[t] = 1;
+      queue[tail++] = t;
+    };
+    for (let x = 0; x < A; x++) {
+      visit(x);
+      visit(T - A + x);
+    }
+    for (let row = A; row < T - A; row += A) {
+      visit(row);
+      visit(row + A - 1);
+    }
+    for (let head = 0; head < tail; head++) {
+      const t = queue[head];
+      if (t >= A) visit(t - A);
+      if (t < T - A) visit(t + A);
+      if (t % A) visit(t - 1);
+      if (t % A < A - 1) visit(t + 1);
+    }
   }
 
   private air(gravityX: number, gravityY: number) {
+    if (this.wallsChanged) this.findExteriorAir();
     const { cells, openness, airFlags, heatTiles, occupiedStrips, reactionStrips,
       temperature, airTemperature, latentBits } = this;
     if (this.obstructionCatalog !== this.catalog) {
@@ -589,14 +633,14 @@ export class World {
     const buoyancy = this.airDelta;
     buoyancy.fill(0);
     for (let t = 0; t < T; t++) {
-      if (!heatTiles[t] || this.wall[t]) continue;
+      if (!heatTiles[t] || this.wall[t] || this.exteriorAir[t]) continue;
       const temp = this.airTemperature[t];
       let contrast = 0;
       if (t % A && !this.wall[t - 1]) contrast += temp - this.airTemperature[t - 1];
       if (t % A < A - 1 && !this.wall[t + 1]) contrast += temp - this.airTemperature[t + 1];
       if (t >= A && !this.wall[t - A]) contrast += temp - this.airTemperature[t - A];
       if (t < T - A && !this.wall[t + A]) contrast += temp - this.airTemperature[t + A];
-      buoyancy[t] = clamp(contrast * 0.0003, -0.25, 0.25);
+      buoyancy[t] = clamp(contrast * 0.00007, -0.045, 0.045);
     }
     const face = (t: number, other: number, speed: number, gravity: number) => {
       const lift = gravity * (buoyancy[t] + buoyancy[other]) * 0.5;
@@ -881,6 +925,17 @@ export class World {
       if (this.wall[t]) continue;
       const delta = airDelta[t] * 0.999 + (ambient - air[t]) * 0.001;
       if (delta) this.changeAirTemperature(t, delta);
+      const previous = this.thermalPressure[t];
+      if (air[t] === ambient && previous === 0) continue;
+      const target = thermalPressureAt(air[t]);
+      if (this.exteriorAir[t]) {
+        this.thermalPressure[t] = target;
+        continue;
+      }
+      // Equilibrate on simulation ticks. A brush, source or flame supplies heat;
+      // only the air solver converts the temperature change into gradual expansion.
+      this.thermalPressure[t] = previous + 0.025 * (target - previous);
+      this.pressure[t] = clamp(this.pressure[t] + (this.thermalPressure[t] - previous), -12, 12);
     }
   }
 

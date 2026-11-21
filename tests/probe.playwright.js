@@ -23,6 +23,12 @@ async (page) => {
     await page.waitForFunction((n) =>
       document.querySelector('.sw-readings output[aria-label=Temperature]')?.textContent === n + '°C', value);
   }
+  async function checkStillAir() {
+    for (const label of ['Pressure', 'Airflow']) {
+      const value = parseFloat(await readings.getByLabel(label, { exact: true }).textContent());
+      check(value === 0, label + ' changed while heating or cooling open air: ' + value);
+    }
+  }
   async function checkThermalKey(name, selected, source) {
     const settings = await key(name).evaluate(el => {
       const face = el.querySelector('.sw-lcd-key-face');
@@ -84,7 +90,7 @@ async (page) => {
   await tap(159, 239);
   await waitTemp(240);
   await pinned(159, 239);
-  check((await readings.getByLabel('Pressure', { exact: true }).textContent()).startsWith('+1.76'), 'Paused heat pressure');
+  await checkStillAir();
   await key('Cool').click();
   await checkThermalKey('Heat', false, false);
   await key('Cool').click();
@@ -93,6 +99,7 @@ async (page) => {
   await pinned(159, 239);
   await tap(159, 239);
   await waitTemp(120);
+  await checkStillAir();
   await key('Probe only').click();
   await tap(159, 239);
   await waitTemp(120);
@@ -131,6 +138,7 @@ async (page) => {
   }
   await key('Stop').click();
   await pinned(80, 100);
+  await checkStillAir();
   await key('Step').click();
   await pinned(80, 100);
   await tab('Materials').click();

@@ -25,18 +25,23 @@ function sealedTile() {
   return w;
 }
 
-test('air strokes pressurize or depressurize a sealed chamber, then vent through an opening', () => {
+test('a thermal stroke changes temperature alone; a sealed chamber responds on later ticks and vents', () => {
   const t = tile(80, 80);
   for (const [tool, sign] of [['Heat', 1], ['Cool', -1]]) {
     const w = sealedTile();
     w.paint(tool, 82, 82, 1);
-    const initial = sign * w.pressure[t];
-    assert.ok(initial > 0.5);
+    assert.equal(w.pressure[t], 0);
+    assert.equal(w.probeAt(82, 82).speed, 0);
+    assert.ok(sign * (w.airTemperature[t] - 20) > 100);
     const twin = World.restore(w.snapshot());
+    w.step();
+    twin.step();
+    const first = sign * w.pressure[t];
+    assert.ok(first > 0 && first < 0.05);
     run(w, 120);
     run(twin, 120);
-    assert.deepEqual(w.pressure, twin.pressure);
-    assert.ok(sign * w.pressure[t] > initial * 0.8 && sign * w.pressure[t] < initial);
+    assert.deepEqual(w.snapshot(), twin.snapshot());
+    assert.ok(sign * w.pressure[t] > first * 10);
     assert.equal(w.pressure[t + 2], 0);
     assert.equal(w.airTemperature[t + 2], 20);
     assert.equal(w.u[t], 0);
@@ -56,37 +61,87 @@ test('a constant thermal source at equilibrium produces no further pressure or f
     const w = sealedTile();
     assert.ok(w.placeSource(tool, 82, 82, 1, 100));
     assert.equal(w.pressure[t], 0);
-    run(w, 20);
+    run(w, 500);
     const pressure = w.pressure[t];
     const temperature = w.airTemperature[t];
     assert.ok(pressure * sign > 0.5 && Math.abs(pressure) <= 12);
     run(w, 240);
     assert.equal(w.airTemperature[t], temperature);
-    assert.equal(w.pressure[t], pressure);
+    assert.ok(Math.abs(w.pressure[t] - pressure) < 0.0001);
     assert.equal(w.pressure[t + 2], 0);
     assert.ok(w.u.every(v => v === 0) && w.v.every(v => v === 0));
   }
 });
 
-test('hot and cold air carry heat in opposite directions as gravity rotates', () => {
+test('hot and cold air in a walled chamber carry heat in opposite directions as gravity rotates', () => {
   const t = tile(80, 80);
   for (const [tool, sign] of [['Heat', -1], ['Cool', 1]]) {
     for (const [gx, gy] of [[0, 1], [1, 0], [-0.6, -0.8]]) {
       const w = new World();
+      for (let offset = 56; offset <= 108; offset += 4) {
+        for (const [x, y] of [[56, offset], [108, offset], [offset, 56], [offset, 108]])
+          w.paint('Wall', x, y);
+      }
       w.paint(tool, 80, 80, 0);
       for (let k = 0; k < 8; k++) w.step({ gravityX: gx, gravityY: gy, shakeX: 0, shakeY: 0 });
       const vx = (w.u[t] + w.u[t - 1]) / 2;
       const vy = (w.v[t] + w.v[t - A]) / 2;
-      assert.ok(sign * (gx * vx + gy * vy) > 0.09);
+      assert.ok(sign * (gx * vx + gy * vy) > 0.02);
       assert.ok(Math.abs(gx * vy - gy * vx) < 0.01);
       let thermalMoment = 0;
       for (let k = 0; k < w.airTemperature.length; k++) {
         const distance = ((k % A) - 20) * gx + (Math.floor(k / A) - 20) * gy;
         thermalMoment += distance * Math.abs(w.airTemperature[k] - 20);
       }
-      assert.ok(sign * thermalMoment > 1);
+      assert.ok(sign * thermalMoment > 0.25);
     }
   }
+});
+
+test('flame, held thermal brushes and continuous heaters and coolers leave open air and loose grains still', () => {
+  for (const [tool, source] of [['Flame', false], ['Heat', false], ['Cool', false], ['Heat', true], ['Cool', true]]) {
+    const w = new World();
+    const grains = [];
+    for (let x = 56; x < 112; x++) w.paint(M.Rock, x, 128, 0);
+    for (let x = 62; x <= 102; x += 2) {
+      if (Math.abs(x - 82) <= 4) continue;
+      w.paint('Sand', x, 127, 0);
+      grains.push(at(x, 127));
+    }
+    if (source) assert.ok(w.placeSource(tool, 82, 126, 3));
+    if (tool === 'Flame') w.paint(tool, 82, 126, 3);
+    let rose = false;
+    for (let tick = 0; tick < 120; tick++) {
+      if (!source && tool !== 'Flame') w.paint(tool, 82, 126, 3);
+      w.step();
+      assert.ok(w.pressure.every(p => p === 0));
+      assert.ok(w.u.every(u => u === 0) && w.v.every(v => v === 0));
+      assert.ok(grains.every(i => w.cells[i] === M.Sand));
+      const firstFlame = w.cells.indexOf(M.Flame);
+      if (firstFlame >= 0 && firstFlame < at(0, 123)) rose = true;
+    }
+    if (tool === 'Flame') assert.ok(rose);
+    else assert.ok((tool === 'Heat' ? 1 : -1) * (w.airTemperature[tile(82, 126)] - 20) > 1);
+  }
+});
+
+test('closing a wall gap enables thermal expansion; reopening releases stored pressure', () => {
+  const w = sealedTile();
+  const t = tile(82, 82);
+  w.paint('Erase', 84, 80, 0);
+  w.paint('Heat', 82, 82, 1, 10);
+  run(w, 25);
+  assert.equal(w.pressure[t], 0);
+  w.paint('Wall', 84, 80, 0);
+  w.paint('Heat', 82, 82, 1);
+  const twin = World.restore(w.snapshot());
+  run(w, 90);
+  run(twin, 90);
+  assert.deepEqual(w.snapshot(), twin.snapshot());
+  assert.ok(w.pressure[t] > 0.5);
+  w.paint('Erase', 84, 80, 0);
+  w.step();
+  assert.ok(w.u[t] > 0.1);
 });
 
 test('a tile filled with fog admits a gust while a tile filled with copper blocks most of it', () => {
