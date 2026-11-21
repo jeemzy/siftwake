@@ -551,7 +551,7 @@ body:has(.sw-dock) {
 .sw-brush-slider:not([data-dragging]) .sw-slider-throw i { transition: top 100ms ease-out, background 100ms linear; }
 .sw-slider-rail input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; writing-mode: vertical-lr; direction: rtl; touch-action: none; cursor: ns-resize; }
 .sw-brush-slider:has(:focus-visible) { outline: 2px solid #446d54; border-radius: 3px; }
-.sw-console { display: grid; gap: 3px; min-width: 0; }
+.sw-console { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; min-width: 0; }
 .sw-console[data-dials] { align-self: stretch; align-content: start; padding-top: 4px; }
 .sw-dial-row { display: flex; align-items: center; justify-content: space-evenly; gap: 7px; }
 .sw-dial-row [data-kit='knob']:not(#_):not(#_) { min-width: 0; width: auto; display: grid; grid-template-columns: var(--dial-size) 38px auto; grid-template-rows: auto auto; align-items: center; gap: 1px 3px; padding: 0; }
@@ -585,6 +585,7 @@ body:has(.sw-dock) {
 @media (max-width: 370px) {
   .sw-face { --dial-size: 56px; }
   .sw-dial-row { gap: 2px; }
+  .sw-dial-row [data-kit='switch-row']:not(#_):not(#_) { padding-inline: 17px; }
   .sw-readings output { font-size: 12px; }
   .sw-readings span { font-size: 8px; }
   .sw-cameras { gap: 2px; }
