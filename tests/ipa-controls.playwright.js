@@ -17,6 +17,7 @@ async (page) => {
       'onEditorVisibility',
       'onMaterial',
       'onSave',
+      'onMotionChange',
     ];
     const props = {
       groups: {
@@ -41,12 +42,17 @@ async (page) => {
       scene: 'Blank',
       feedback: '',
       paused: true,
+      motionSupported: true,
+      motionEnabled: false,
+      motionPending: false,
+      motionStatus: '',
     };
     const emit = (type, data) =>
       window.dispatchEvent(new CustomEvent('$$dom_event', { detail: { type, data } }));
     window.observedActions = [];
     window.transportActions = [];
     window.editorActions = [];
+    window.motionActions = [];
     window.ReactNativeWebView = {
       injectedObjectJson: () =>
         JSON.stringify({ EXPO_DOM_HOST_OS: 'ios', initialProps: { names, props } }),
@@ -73,6 +79,21 @@ async (page) => {
           window.editorActions.push([actionId, args]);
           result = 'World saved.';
         }
+        if (actionId === 'onMotionChange') {
+          const [requested] = args;
+          window.motionActions.push(requested);
+          props.motionPending = true;
+          props.motionStatus = '';
+          emit('$$props', { names, props });
+          window.finishMotion = (granted) => {
+            props.motionEnabled = requested && granted;
+            props.motionStatus = requested && !granted ? 'Motion access denied.' : '';
+            props.motionPending = false;
+            emit('$$native_action_result', { actionId, uid, result: null });
+            emit('$$props', { names, props });
+          };
+          return;
+        }
         if (actionId === 'onMaterial') {
           window.editorActions.push([actionId, args]);
           const [editing, draft] = args;
@@ -97,7 +118,7 @@ async (page) => {
       },
     };
   });
-  let dock, transport, material;
+  let dock, transport, material, motion;
   for (const url of entries) {
     await page.goto(url);
     const world = page.getByRole('tab', { name: 'World', exact: true });
@@ -162,6 +183,32 @@ async (page) => {
     if (JSON.stringify(actual) !== JSON.stringify(expected))
       throw Error('Unexpected bridge payload: ' + JSON.stringify(actual));
     dock = actual;
+    await page.getByRole('tab', { name: 'Air', exact: true }).click();
+    const motionButton = btn('Motion');
+    await motionButton.waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    const face = page.locator('.sw-face');
+    await face
+      .locator('[data-kit="tab-panel"][data-ending-style]')
+      .first()
+      .waitFor({ state: 'hidden' });
+    const dockBounds = await face.boundingBox();
+    for (const [i, granted] of [false, true, true].entries()) {
+      await motionButton.tap();
+      await page.waitForFunction((n) => window.motionActions.length === n, i + 1);
+      await page.locator('button[aria-pressed]:disabled', { hasText: /^motion$/i }).waitFor();
+      await page.evaluate((allow) => window.finishMotion(allow), granted);
+      await page.getByRole('button', { name: 'Motion', exact: true, pressed: i === 1 }).waitFor();
+      if (i === 0) await page.getByText('Motion access denied.', { exact: true }).waitFor();
+      const currentBounds = await face.boundingBox();
+      if (JSON.stringify(currentBounds) !== JSON.stringify(dockBounds))
+        throw Error(
+          'Motion controls resized the dock: ' + JSON.stringify({ dockBounds, currentBounds }),
+        );
+    }
+    const motionActions = await page.evaluate(() => window.motionActions);
+    if (JSON.stringify(motionActions) !== '[true,true,false]') throw Error('Motion action payload');
+    motion = 'Motion opt-in, denial, retry and opt-out crossed the bridge with fixed dock bounds.';
     await page.getByRole('tab', { name: 'Materials', exact: true }).click();
     await btn('Sand').click();
     await btn('New material').click();
@@ -211,6 +258,6 @@ async (page) => {
     material =
       'Exported editor, validation result, stable edit ID and World Save crossed the iOS bridge.';
   }
-  if (!transport || !dock || !material) throw Error('Missing SPEC-01 panel');
-  return { dock, transport, material };
+  if (!transport || !dock || !material || !motion) throw Error('Missing SPEC-01 panel');
+  return { dock, transport, material, motion };
 };

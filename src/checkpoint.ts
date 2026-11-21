@@ -8,6 +8,7 @@ export type Editor = {
   brush: number;
   camera: Layers;
   category: keyof typeof groups;
+  motionEnabled?: boolean;
 };
 export type Session = { world: World; editor: Editor };
 export type Loaded = { session?: Session; warning?: string; writable: boolean };
@@ -19,6 +20,7 @@ export function decodeCheckpoint(blob: Uint8Array, metadata: string): Session {
     !editor ||
     !['Tunnel', 'Blank'].includes(editor.scene) ||
     !Object.hasOwn(groups, editor.category) ||
+    (editor.motionEnabled !== undefined && typeof editor.motionEnabled !== 'boolean') ||
     ![1, 3, 6].includes(editor.brush) ||
     !['Heat', 'Air', 'Pressure'].every((k) => typeof editor.camera?.[k] === 'boolean')
   )

@@ -51,6 +51,10 @@ Open **Materials → New material**. Give it a name and color, choose how it mov
 
 **World → Save** writes the current world and custom catalog to the local slot. Siftwake also saves during play and on backgrounding. Reopening restores the saved world paused. The iPhone uses SQLite, and Expo Web uses browser storage.
 
+## Phone motion
+
+On iPhone, open **Air → Motion** and allow access when prompted. Press **Play**, then tilt the phone left or right to move loose powders and liquids downhill. A quick shake jostles loose materials and stirs gases. The world ignores phone motion while paused, including when you press **Step**. The switch is saved with the world and can be turned off in **Air**.
+
 ## iPhone updates
 
 Install the unsigned IPA from the latest GitHub release. Its production channel checks at launch and when you return to the game, at most once a minute. A downloaded update offers **Restart to update** or **Later**. If you defer it, you can restart from **World**. Restart saves the current world and custom catalog to SQLite and restores them paused. The installed game also checkpoints dirty sessions every 15 seconds and on backgrounding.

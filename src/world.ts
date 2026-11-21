@@ -10,6 +10,7 @@ import {
   type MaterialResult,
 } from './materials.ts';
 export { M } from './materials.ts';
+import type { MotionInput } from './motion.ts';
 
 export const W = 160,
   H = 240,
@@ -449,6 +450,10 @@ export class World {
     return true;
   }
 
+  private nudge(i: number, x: number, y: number) {
+    return x >= 0 && y >= 0 && x < W && y < H && !this.cells[x + y * W] && this.move(i, x, y);
+  }
+
   private hydrateSand() {
     // Resolve contacts before gravity can carry either partner away.
     for (let i = this.cells.indexOf(M.Water); i !== -1; i = this.cells.indexOf(M.Water, i + 1)) {
@@ -673,13 +678,18 @@ export class World {
     if (--this.life[i] === 0) this.cells[i] = this.cells[i] === M.Flame ? M.Smoke : M.Ash;
   }
 
-  step() {
+  step(motion?: MotionInput) {
     this.ticks++;
     this.air();
     this.transferHeat();
     this.reactions();
     this.hydrateSand();
     this.customReactions();
+    const tilt = motion?.tiltX ?? 0;
+    const shakeX = motion?.shakeX ?? 0;
+    const shakeY = motion?.shakeY ?? 0;
+    const shake = Math.min(1, Math.hypot(shakeX, shakeY));
+    const shakeHorizontal = Math.abs(shakeX) / (Math.abs(shakeX) + Math.abs(shakeY));
     const reverse = this.ticks % 2 === 0;
     for (let y = H - 1; y >= 0; y--)
       for (let column = 0; column < W; column++) {
@@ -701,14 +711,33 @@ export class World {
           continue;
         if (m === M.Ember || m === M.Flame) this.burn(i, x, y);
         if (m === M.Ember) continue;
-        if (m === M.Water || m === M.MoltenGlass || m === M.Lava || family === 'liquid') {
+        const liquid = m === M.Water || m === M.MoltenGlass || m === M.Lava || family === 'liquid';
+        const gas = m === M.Smoke || m === M.Flame || m === M.Steam || family === 'gas';
+        if (tilt || shake) {
+          const response = 1 - (custom?.density ?? builtinDensity[m]) * 0.006;
+          if (shake && this.random() < shake * response * 0.85) {
+            const horizontal = this.random() < shakeHorizontal;
+            const nx = horizontal ? x + Math.sign(shakeX) : x;
+            const ny = horizontal ? y : y + Math.sign(shakeY);
+            if (this.nudge(i, nx, ny)) continue;
+          }
+          if (
+            tilt &&
+            !gas &&
+            (liquid || y === 0 || !this.cells[i - W]) &&
+            this.random() < Math.min(1, Math.abs(tilt)) * response * (liquid ? 0.72 : 0.55) &&
+            this.nudge(i, x + Math.sign(tilt), y)
+          )
+            continue;
+        }
+        if (liquid) {
           this.flowLiquid(i, x, y);
           continue;
         }
         const t = tile(x, y);
         const vx = (this.u[t] + (t % A ? this.u[t - 1] : 0)) * 0.5;
         const vy = (this.v[t] + (t >= A ? this.v[t - A] : 0)) * 0.5;
-        if (m === M.Smoke || m === M.Flame || m === M.Steam || family === 'gas') {
+        if (gas) {
           const dx = this.random() < Math.min(1, Math.abs(vx) * 1.6) ? Math.sign(vx) : 0;
           const rise = vy - (m === M.Smoke ? 0.2 : 0.15);
           const dy = this.random() < Math.min(1, Math.abs(rise)) ? Math.sign(rise) : 0;

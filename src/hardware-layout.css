@@ -67,6 +67,10 @@ body:has(.sw-dock) {
   min-height: 36px;
   padding: 3px 9px;
 }
+.sw-setting .sw-motion-button:not(#_):not(#_) {
+  margin-left: auto;
+  min-height: 44px;
+}
 .sw-setting [data-kit='knob']:not(#_) {
   display: grid;
   grid-template-columns: 56px auto auto;
@@ -101,6 +105,12 @@ body:has(.sw-dock) {
 .sw-legend output {
   margin-left: auto;
   white-space: nowrap;
+}
+.sw-air-status:empty {
+  display: none;
+}
+.sw-air-status {
+  flex-shrink: 0;
 }
 .sw-current-tool,
 .sw-save-status {

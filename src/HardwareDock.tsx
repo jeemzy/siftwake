@@ -33,6 +33,11 @@ type Props = {
   feedback: string;
   category: Group;
   power: number;
+  motionSupported: boolean;
+  motionEnabled: boolean;
+  motionPending: boolean;
+  motionStatus: string;
+  onMotionChange: (enabled: boolean) => Promise<void>;
   sceneGeneration: number;
   updateLabel: string;
   updateReady: boolean;
@@ -85,7 +90,20 @@ export default function HardwareDock(props: Props) {
                   void props.onPower(next);
                 }}
               />
-              <span role="status">{props.feedback}</span>
+              {props.motionSupported ? (
+                <Button
+                  className="sw-motion-button"
+                  tone={props.motionEnabled ? 'primary' : 'secondary'}
+                  aria-pressed={props.motionEnabled}
+                  aria-busy={props.motionPending}
+                  disabled={props.motionPending}
+                  onClick={() => props.onMotionChange(!props.motionEnabled)}
+                >
+                  Motion
+                </Button>
+              ) : (
+                <span role="status">{props.feedback}</span>
+              )}
             </>
           ) : group === 'World' ? (
             <div role="group" aria-label="Camera" className="sw-cameras">
@@ -118,6 +136,11 @@ export default function HardwareDock(props: Props) {
           )}
         </div>
         <div className="sw-legend">
+          {group === 'Air' && props.motionSupported && (
+            <span role="status" className="sw-air-status">
+              {props.motionStatus || props.feedback}
+            </span>
+          )}
           {props.camera.Heat && (
             <>
               <span className="sw-heat-scale" aria-hidden />

@@ -17,7 +17,13 @@
     },
     "owner": "jmzy",
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow Siftwake to use device motion to move materials when you tilt or shake your phone."
+        }
+      ]
     ],
     "runtimeVersion": {
       "policy": "fingerprint"

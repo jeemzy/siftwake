@@ -5,12 +5,14 @@ import StrokeSurface from './StrokeSurface';
 import type { Layers } from './views';
 import { worldImage } from './pixels';
 import { World, W, H, tile, type Tool, type ProbeReading } from './world';
+import type { MotionInput } from './motion';
 
 type Props = {
   world: World;
   paused: boolean;
   locked: React.RefObject<boolean>;
   onStroke: (active: boolean) => void;
+  readMotion: () => MotionInput | undefined;
   camera: Layers;
   onProbe: (reading: ProbeReading | null) => void;
   onReading: (value: number) => void;
@@ -26,6 +28,7 @@ export default function Board({
   paused,
   locked,
   onStroke,
+  readMotion,
   camera,
   onReading,
   onProbe,
@@ -71,7 +74,7 @@ export default function Board({
       if (!paused && !locked.current && previous !== undefined) {
         debt += Math.min(100, time - previous);
         while (debt >= 1000 / 30) {
-          world.step();
+          world.step(readMotion());
           debt -= 1000 / 30;
           dirty = true;
         }
@@ -105,7 +108,7 @@ export default function Board({
       cancelAnimationFrame(pending);
       invalidate.current = () => {};
     };
-  }, [world, paused, pixels, onReading, onProbe]);
+  }, [world, paused, pixels, onReading, onProbe, readMotion]);
   useLayoutEffect(() => {
     last.current = null;
   }, [world, tool, width]);

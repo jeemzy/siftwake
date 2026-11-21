@@ -10,6 +10,7 @@ import { loadSession, saveSession } from './storage';
 import { checkUpdate, applyUpdate, updateLabel } from './ota';
 import type { Editor, Session } from './checkpoint';
 import { changeLayer, normal } from './views';
+import { usePhoneMotion } from './usePhoneMotion';
 
 const panelProps = {
   useExpoDOMWebView: false,
@@ -23,8 +24,8 @@ const editorPanelProps = {
   style: { flex: 1, backgroundColor: 'transparent' },
 } as const;
 
-function checkpointKey({ world, editor }: Session) {
-  return JSON.stringify([world.ticks, world.edits, world.strength, editor]);
+function checkpointKey({ world, editor: { motionEnabled = false, ...editor } }: Session) {
+  return JSON.stringify([world.ticks, world.edits, world.strength, editor, motionEnabled]);
 }
 
 export default function Lab() {
@@ -47,14 +48,16 @@ export default function Lab() {
   const [notice, setNotice] = useState(loaded.warning ?? '');
   const [applying, setApplying] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [motionEnabled, setMotionEnabled] = useState(restored?.motionEnabled ?? false);
+  const motion = usePhoneMotion(motionEnabled, setMotionEnabled, !paused && !applying);
   const expandedDock = editorOpen && Platform.OS !== 'web';
   const locked = useRef(false),
     drawing = useRef(false),
     waiting = useRef(false);
-  const latest = useRef({ world, editor: { scene, tool, brush, camera, category } });
+  const latest = useRef({ world, editor: { scene, tool, brush, camera, category, motionEnabled } });
   useLayoutEffect(() => {
-    latest.current = { world, editor: { scene, tool, brush, camera, category } };
-  }, [world, scene, tool, brush, camera, category]);
+    latest.current = { world, editor: { scene, tool, brush, camera, category, motionEnabled } };
+  }, [world, scene, tool, brush, camera, category, motionEnabled]);
   const saved = useRef<{ world: World; key: string } | null>(
     loaded.session ? { world: loaded.session.world, key: checkpointKey(loaded.session) } : null,
   );
@@ -116,6 +119,7 @@ export default function Lab() {
     }
     waiting.current = false;
     locked.current = true;
+    motion.clear();
     setApplying(true);
     setPaused(true);
     try {
@@ -133,6 +137,7 @@ export default function Lab() {
   }
   async function load(next: Scene) {
     if (locked.current) return;
+    motion.clear();
     setWorld(world.reset(next));
     setSceneGeneration((n) => n + 1);
     setScene(next);
@@ -166,6 +171,7 @@ export default function Lab() {
           <Board
             locked={locked}
             onStroke={stroke}
+            readMotion={motion.read}
             world={world}
             paused={paused}
             tool={tool}
@@ -184,7 +190,10 @@ export default function Lab() {
               expanded={expandedDock}
               paused={paused}
               onPlayback={async () => {
-                if (!locked.current) setPaused((v) => !v);
+                if (!locked.current) {
+                  motion.clear();
+                  setPaused((v) => !v);
+                }
               }}
               onStep={async () => {
                 if (paused && !locked.current) {
@@ -205,6 +214,13 @@ export default function Lab() {
               category={category}
               sceneGeneration={sceneGeneration}
               power={Math.round(world.strength * 100)}
+              motionSupported={motion.supported}
+              motionEnabled={motionEnabled}
+              motionPending={motion.pending || applying}
+              motionStatus={motion.status}
+              onMotionChange={async (enabled) => {
+                if (!locked.current) await motion.change(enabled);
+              }}
               updateLabel={updateLabel}
               updateReady={ready && later}
               onRestart={restart}
@@ -219,7 +235,10 @@ export default function Lab() {
                 }
               }}
               onEditorVisibility={async (visible) => {
-                if (visible) setPaused(true);
+                if (visible) {
+                  motion.clear();
+                  setPaused(true);
+                }
                 setEditorOpen(visible);
               }}
               onMaterial={async (id, draft) => {

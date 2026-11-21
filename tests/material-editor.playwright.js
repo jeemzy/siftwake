@@ -58,6 +58,12 @@ async (page, legacy) => {
     );
   }
 
+  await tab('Air').click();
+  check((await button('Motion').count()) === 0, 'Browser game exposed the native sensor control');
+  check(
+    JSON.stringify(await bounds()) === JSON.stringify(initial),
+    'Air controls moved the canvas',
+  );
   await tab('World').click();
   await button('Blank canvas').click();
   await tab('Materials').click();
