@@ -229,13 +229,18 @@ async (page) => {
       [844, 390],
     ]) {
       await page.setViewportSize({ width, height });
-      const panel = await page.locator('.sw-face').boundingBox();
       for (const [label, left] of [['Agitate', true], ['Play', false], ['Step', false]]) {
-        const target = await button(label).boundingBox();
-        const cap = await button(label).locator('[data-kit="code-copy"]').boundingBox();
-        if (!cap || target.width < 44 || target.height < 44 ||
-            (left ? cap.x > panel.x - 2 : cap.x + cap.width < panel.x + panel.width + 2))
-          throw Error(label + ' cap fails to protrude from its case edge at width ' + width);
+        // React Native Web updates the dock inset after a viewport resize.
+        // Read the case and its cap in one layout snapshot.
+        const bounds = await button(label).evaluate(el => ({
+          target: el.getBoundingClientRect().toJSON(),
+          panel: el.closest('.sw-face').getBoundingClientRect().toJSON(),
+          cap: el.querySelector('[data-kit="code-copy"]').getBoundingClientRect().toJSON(),
+        }));
+        const { target, panel, cap } = bounds;
+        if (target.width < 44 || target.height < 44 ||
+            (left ? cap.x > panel.x - 2 : cap.right < panel.right + 2))
+          throw Error(label + ' cap geometry at width ' + width + ': ' + JSON.stringify(bounds));
       }
       for (const name of ['Materials', 'Air', 'Build', 'Thermal', 'World']) {
         await tab(name).click();
