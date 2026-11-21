@@ -49,6 +49,8 @@ const dirs = [
   [-1, 0],
   [0, -1],
 ];
+type Direction = readonly [number, number];
+const screenDown: Direction = [0, 1];
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 export const tile = (x: number, y: number) => (x >> 2) + (y >> 2) * A;
 
@@ -415,7 +417,7 @@ export class World {
     }
   }
 
-  private move(i: number, x: number, y: number) {
+  private move(i: number, x: number, y: number, down = screenDown) {
     if (x < 0 || y < 0 || x >= W || y >= H || this.wall[tile(x, y)]) return false;
     const j = x + y * W;
     const displaced = this.cells[j];
@@ -423,15 +425,19 @@ export class World {
       const m = this.cells[i];
       if (this.moved[j] === this.ticks) return false;
       if (m < firstCustom && displaced < firstCustom) {
-        if (displaced !== M.Water || (m !== M.WetSand && m !== M.Gravel) || j !== i + W)
+        if (
+          displaced !== M.Water ||
+          (m !== M.WetSand && m !== M.Gravel) ||
+          j - i !== down[0] + down[1] * W
+        )
           return false;
       } else {
         const target = this.custom(displaced);
         if (fixed.has(displaced) || target?.family === 'solid') return false;
         const density = this.custom(m)?.density ?? builtinDensity[m];
         const other = target?.density ?? builtinDensity[displaced];
-        if (!(j - i >= W - 1 && density > other) && !(i - j >= W - 1 && density < other))
-          return false;
+        const descent = (x - (i % W)) * down[0] + (y - Math.floor(i / W)) * down[1];
+        if (!(descent > 0 && density > other) && !(descent < 0 && density < other)) return false;
       }
     }
     const previousTemp = this.temperature[j],
@@ -450,8 +456,8 @@ export class World {
     return true;
   }
 
-  private nudge(i: number, x: number, y: number) {
-    return x >= 0 && y >= 0 && x < W && y < H && !this.cells[x + y * W] && this.move(i, x, y);
+  private openCell(x: number, y: number) {
+    return x >= 0 && y >= 0 && x < W && y < H && !this.wall[tile(x, y)] && !this.cells[x + y * W];
   }
 
   private hydrateSand() {
@@ -517,16 +523,25 @@ export class World {
     }
   }
 
-  private flowLiquid(i: number, x: number, y: number) {
-    if (this.move(i, x, y + 1)) return;
-    const first = this.random() < 0.5 ? 1 : -1;
-    for (const dx of [first, -first]) {
-      const nx = x + dx;
-      if (nx < 0 || nx >= W || this.wall[tile(nx, y)] || this.cells[nx + y * W] !== M.Empty)
-        continue;
-      if (this.move(i, nx, y + 1)) return;
+  private flowLiquid(
+    i: number,
+    x: number,
+    y: number,
+    down: Direction,
+    side: Direction,
+    downhill: number,
+    crossSlope: number,
+  ) {
+    if (this.move(i, x + down[0], y + down[1], down)) return;
+    const first = this.random() < (1 + crossSlope) / 2 ? 1 : -1;
+    for (const sign of [first, -first]) {
+      if (downhill + crossSlope * sign < 0) continue;
+      const nx = x + side[0] * sign;
+      const ny = y + side[1] * sign;
+      if (this.openCell(nx, ny) && this.move(i, nx + down[0], ny + down[1], down)) return;
     }
-    if (!this.move(i, x + first, y)) this.move(i, x - first, y);
+    if (!this.move(i, x + side[0] * first, y + side[1] * first, down) && first * crossSlope <= 0)
+      this.move(i, x - side[0] * first, y - side[1] * first, down);
   }
 
   probeAt(x: number, y: number): ProbeReading {
@@ -664,16 +679,12 @@ export class World {
     }
   }
 
-  private burn(i: number, x: number, y: number) {
-    if (
-      this.cells[i] === M.Ember &&
-      y > 0 &&
-      !this.cells[i - W] &&
-      !this.wall[tile(x, y - 1)] &&
-      this.random() < 0.22
-    ) {
-      this.deposit(x, y - 1, this.random() < 0.68 ? M.Flame : M.Smoke);
-      this.moved[i - W] = this.ticks;
+  private burn(i: number, x: number, y: number, down: Direction) {
+    const upX = x - down[0];
+    const upY = y - down[1];
+    if (this.cells[i] === M.Ember && this.openCell(upX, upY) && this.random() < 0.22) {
+      this.deposit(upX, upY, this.random() < 0.68 ? M.Flame : M.Smoke);
+      this.moved[upX + upY * W] = this.ticks;
     }
     if (--this.life[i] === 0) this.cells[i] = this.cells[i] === M.Flame ? M.Smoke : M.Ash;
   }
@@ -685,15 +696,32 @@ export class World {
     this.reactions();
     this.hydrateSand();
     this.customReactions();
-    const tilt = motion?.tiltX ?? 0;
+    const gravityX = motion?.gravityX ?? 0;
+    const gravityY = motion?.gravityY ?? 1;
+    const horizontal = Math.abs(gravityX);
+    const vertical = Math.abs(gravityY);
+    // Interleave grid axes in proportion to the measured slope, without snapping intermediate angles.
+    const xShare = horizontal / (horizontal + vertical);
+    const useX = horizontal > 0 && (!vertical || (this.ticks * 0.61803398875) % 1 < xShare);
+    const down: Direction = useX ? [Math.sign(gravityX), 0] : [0, Math.sign(gravityY) || 1];
+    const [downX, downY] = down;
+    const side: Direction = [downY, -downX];
+    const [sideX, sideY] = side;
+    const downhill = useX ? horizontal : vertical;
+    const crossSlope = gravityX * sideX + gravityY * sideY;
     const shakeX = motion?.shakeX ?? 0;
     const shakeY = motion?.shakeY ?? 0;
     const shake = Math.min(1, Math.hypot(shakeX, shakeY));
     const shakeHorizontal = Math.abs(shakeX) / (Math.abs(shakeX) + Math.abs(shakeY));
     const reverse = this.ticks % 2 === 0;
-    for (let y = H - 1; y >= 0; y--)
-      for (let column = 0; column < W; column++) {
-        const x = reverse ? W - 1 - column : column,
+    const depth = useX ? W : H;
+    const acrossCount = useX ? H : W;
+    for (let row = depth - 1; row >= 0; row--) {
+      const depthIndex = downX + downY > 0 ? row : depth - 1 - row;
+      for (let column = 0; column < acrossCount; column++) {
+        const acrossIndex = reverse ? acrossCount - 1 - column : column;
+        const x = useX ? depthIndex : acrossIndex,
+          y = useX ? acrossIndex : depthIndex,
           i = x + y * W,
           m = this.cells[i];
         if (!m) continue;
@@ -709,44 +737,43 @@ export class World {
           this.moved[i] === this.ticks
         )
           continue;
-        if (m === M.Ember || m === M.Flame) this.burn(i, x, y);
+        if (m === M.Ember || m === M.Flame) this.burn(i, x, y, down);
         if (m === M.Ember) continue;
         const liquid = m === M.Water || m === M.MoltenGlass || m === M.Lava || family === 'liquid';
         const gas = m === M.Smoke || m === M.Flame || m === M.Steam || family === 'gas';
-        if (tilt || shake) {
+        if (shake) {
           const response = 1 - (custom?.density ?? builtinDensity[m]) * 0.006;
-          if (shake && this.random() < shake * response * 0.85) {
+          if (this.random() < shake * response * 0.85) {
             const horizontal = this.random() < shakeHorizontal;
             const nx = horizontal ? x + Math.sign(shakeX) : x;
             const ny = horizontal ? y : y + Math.sign(shakeY);
-            if (this.nudge(i, nx, ny)) continue;
+            if (this.openCell(nx, ny) && this.move(i, nx, ny, down)) continue;
           }
-          if (
-            tilt &&
-            !gas &&
-            (liquid || y === 0 || !this.cells[i - W]) &&
-            this.random() < Math.min(1, Math.abs(tilt)) * response * (liquid ? 0.72 : 0.55) &&
-            this.nudge(i, x + Math.sign(tilt), y)
-          )
-            continue;
         }
         if (liquid) {
-          this.flowLiquid(i, x, y);
+          this.flowLiquid(i, x, y, down, side, downhill, crossSlope);
           continue;
         }
         const t = tile(x, y);
         const vx = (this.u[t] + (t % A ? this.u[t - 1] : 0)) * 0.5;
         const vy = (this.v[t] + (t >= A ? this.v[t - A] : 0)) * 0.5;
+        const windAcross = vx * sideX + vy * sideY;
         if (gas) {
-          const dx = this.random() < Math.min(1, Math.abs(vx) * 1.6) ? Math.sign(vx) : 0;
-          const rise = vy - (m === M.Smoke ? 0.2 : 0.15);
-          const dy = this.random() < Math.min(1, Math.abs(rise)) ? Math.sign(rise) : 0;
-          if (dx || dy) {
-            if (!this.move(i, x + dx, y + dy) && dx && dy) this.move(i, x + dx, y);
+          const across =
+            this.random() < Math.min(1, Math.abs(windAcross) * 1.6) ? Math.sign(windAcross) : 0;
+          const rise = vx * downX + vy * downY - (m === M.Smoke ? 0.2 : 0.15);
+          const along = this.random() < Math.min(1, Math.abs(rise)) ? Math.sign(rise) : 0;
+          if (across || along) {
+            const nx = x + sideX * across;
+            const ny = y + sideY * across;
+            if (!this.move(i, nx + downX * along, ny + downY * along, down) && across && along)
+              this.move(i, nx, ny, down);
           }
           continue;
         }
-        const exposed = y === 0 || !this.cells[i - W];
+        const upX = x - downX;
+        const upY = y - downY;
+        const exposed = upX < 0 || upY < 0 || upX >= W || upY >= H || !this.cells[upX + upY * W];
         const threshold = custom
           ? (custom.density / 100) ** 2 + 0.1
           : m === M.Gravel
@@ -756,26 +783,25 @@ export class World {
               : 0.2;
         if (
           exposed &&
-          Math.abs(vx) > threshold &&
-          this.random() < Math.min(1, Math.abs(vx) - threshold)
+          Math.abs(windAcross) > threshold &&
+          this.random() < Math.min(1, Math.abs(windAcross) - threshold)
         ) {
-          const dx = Math.sign(vx);
-          if (this.move(i, x + dx, y) || this.move(i, x + dx, y - 1)) continue;
+          const sideSign = Math.sign(windAcross);
+          const nx = x + sideX * sideSign;
+          const ny = y + sideY * sideSign;
+          if (this.move(i, nx, ny, down) || this.move(i, nx - downX, ny - downY, down)) continue;
         }
-        if (this.move(i, x, y + 1)) continue;
-        const dx = this.random() < 0.5 ? 1 : -1;
-        if (m === M.WetSand) {
-          // Cohesion holds a damp grain on a shallow step. A deeper drop breaks it loose.
-          for (const side of [x + dx, x - dx]) {
-            if (side < 0 || side >= W || y + 2 >= H) continue;
-            if (
-              !this.wall[tile(side, y + 2)] &&
-              this.cells[side + (y + 2) * W] === M.Empty &&
-              this.move(i, side, y + 1)
-            )
-              break;
-          }
-        } else if (!this.move(i, x + dx, y + 1)) this.move(i, x - dx, y + 1);
+        if (this.move(i, x + downX, y + downY, down)) continue;
+        const first = crossSlope ? Math.sign(crossSlope) : this.random() < 0.5 ? 1 : -1;
+        for (const sign of [first, -first]) {
+          if (downhill + crossSlope * sign < 0) continue;
+          const nx = x + downX + sideX * sign;
+          const ny = y + downY + sideY * sign;
+          // Cohesion holds wet sand until there's a deeper drop in the gravity direction.
+          if (m === M.WetSand && !this.openCell(nx + downX, ny + downY)) continue;
+          if (this.move(i, nx, ny, down)) break;
+        }
       }
+    }
   }
 }

@@ -53,7 +53,7 @@ Open **Materials → New material**. Give it a name and color, choose how it mov
 
 ## Phone motion
 
-On iPhone, open **Air → Motion** and allow access when prompted. Press **Play**, then tilt the phone left or right to move loose powders and liquids downhill. A quick shake jostles loose materials and stirs gases. The world ignores phone motion while paused, including when you press **Step**. The switch is saved with the world and can be turned off in **Air**.
+On iPhone, open **Air → Motion** and allow access when prompted. Press **Play**, then rotate or tilt the phone. Loose powders and liquids fall toward the lowest edge or corner, and gases rise in the opposite direction. This applies to materials already on the board. A quick shake jostles loose materials and stirs gases. The world ignores phone motion while paused, including when you press **Step**. The switch is saved with the world and can be turned off in **Air**.
 
 ## iPhone updates
 

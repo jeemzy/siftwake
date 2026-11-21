@@ -1,8 +1,13 @@
-export type MotionInput = Readonly<{ tiltX: number; shakeX: number; shakeY: number }>;
+export type MotionInput = Readonly<{
+  gravityX: number;
+  gravityY: number;
+  shakeX: number;
+  shakeY: number;
+}>;
 
 type MotionSample = {
   acceleration: { x: number; y: number; z: number } | null;
-  accelerationIncludingGravity: { x: number };
+  accelerationIncludingGravity: { x: number; y: number };
 };
 type Permission = { granted: boolean; canAskAgain: boolean };
 type MotionAccess = {
@@ -20,10 +25,10 @@ export async function checkMotionAccess(sensor: MotionAccess, prompt: boolean) {
   return 'denied';
 }
 
-const neutral: MotionInput = { tiltX: 0, shakeX: 0, shakeY: 0 };
+const neutral: MotionInput = { gravityX: 0, gravityY: 1, shakeX: 0, shakeY: 0 };
 const gravity = 9.80665;
-const deadZone = 0.12;
-const fullTilt = 0.65;
+const flatThreshold = 0.12;
+const axisNoise = 0.02;
 const shakeThreshold = 7;
 const shakeDuration = 250;
 const staleAfter = 250;
@@ -31,8 +36,10 @@ const staleAfter = 250;
 export function createMotionInput() {
   let acceptAfter = -Infinity;
   let latest = -Infinity;
-  let filteredTilt = 0;
-  let tiltX = 0;
+  let filteredX = 0;
+  let filteredY = 0;
+  let gravityX = 0;
+  let gravityY = 1;
   let shakeAt = -Infinity;
   let shakeX = 0;
   let shakeY = 0;
@@ -41,7 +48,8 @@ export function createMotionInput() {
   function clear(now = -Infinity) {
     acceptAfter = now;
     latest = shakeAt = -Infinity;
-    filteredTilt = tiltX = shakeX = shakeY = 0;
+    filteredX = filteredY = gravityX = shakeX = shakeY = 0;
+    gravityY = 1;
     depthDirection = 1;
   }
 
@@ -61,15 +69,24 @@ export function createMotionInput() {
     )
       return;
     const { x, y, z } = acceleration;
-    const lean = (accelerationIncludingGravity.x - x) / gravity;
+    const downX = (accelerationIncludingGravity.x - x) / gravity;
+    const downY = (y - accelerationIncludingGravity.y) / gravity;
     const force = Math.hypot(x, y, z);
-    if (!Number.isFinite(lean) || !Number.isFinite(force)) return;
+    if (!Number.isFinite(downX) || !Number.isFinite(downY) || !Number.isFinite(force)) return;
     if (capturedAt - latest > staleAfter) clear(acceptAfter);
-    filteredTilt = latest === -Infinity ? lean : filteredTilt + (lean - filteredTilt) * 0.35;
+    const smoothing = latest === -Infinity ? 1 : 0.35;
+    filteredX += (downX - filteredX) * smoothing;
+    filteredY += (downY - filteredY) * smoothing;
     latest = capturedAt;
-    tiltX =
-      Math.sign(filteredTilt) *
-      Math.min(1, Math.max(0, (Math.abs(filteredTilt) - deadZone) / (fullTilt - deadZone)));
+    const magnitude = Math.hypot(filteredX, filteredY);
+    // When the phone is flat, there is no reliable downhill direction in the screen plane.
+    if (magnitude >= flatThreshold) {
+      gravityX = Math.abs(filteredX) <= axisNoise ? 0 : filteredX;
+      gravityY = Math.abs(filteredY) <= axisNoise ? 0 : filteredY;
+      const length = Math.hypot(gravityX, gravityY);
+      gravityX /= length;
+      gravityY /= length;
+    }
 
     if (force < shakeThreshold || capturedAt - shakeAt < shakeDuration) return;
     const strength = Math.min(1, 0.35 + (force - shakeThreshold) * 0.06);
@@ -90,7 +107,7 @@ export function createMotionInput() {
   function read(now: number): MotionInput {
     if (now - latest > staleAfter) return neutral;
     const decay = Math.max(0, 1 - Math.max(0, now - shakeAt) / shakeDuration);
-    return { tiltX: tiltX || 0, shakeX: shakeX * decay || 0, shakeY: shakeY * decay || 0 };
+    return { gravityX, gravityY, shakeX: shakeX * decay || 0, shakeY: shakeY * decay || 0 };
   }
 
   return { sample, read, clear };
