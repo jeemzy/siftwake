@@ -475,9 +475,36 @@ async (page) => {
     if (JSON.stringify(actual) !== JSON.stringify(expected))
       throw Error('Unexpected bridge payload: ' + JSON.stringify(actual));
     dock = actual;
+    await check('Pressure').click();
+    await check('Air').click();
+    await page.getByRole('tab', { name: 'Thermal', exact: true }).click();
+    const pressureKey = page.getByText('Blue · low　Amber · high', { exact: true });
+    await page.evaluate(() => document.fonts.ready);
+    const thermalLegend = await pressureKey.boundingBox();
+    async function checkMaximum(control) {
+      await control.press('End');
+      await control.blur();
+      const fits = await control.evaluate(el => {
+        const ctx = document.createElement('canvas').getContext('2d');
+        const style = getComputedStyle(el);
+        ctx.font = style.fontSize + ' ' + style.fontFamily;
+        return el.value === '100' && el.scrollWidth <= el.clientWidth &&
+          ctx.measureText(el.value).width <= el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      });
+      if (!fits) throw Error('Maximum knob value is clipped');
+    }
+    await checkMaximum(knob);
     await page.getByRole('tab', { name: 'Air', exact: true }).click();
-    const motionButton = btn('Motion');
-    await motionButton.waitFor();
+    const motionSwitch = page.getByRole('switch', { name: 'Motion', exact: true });
+    await motionSwitch.waitFor();
+    await checkMaximum(page.getByRole('spinbutton', { name: 'Fan strength' }));
+    const fanDial = await page.locator('[data-kit="knob-dial"]').boundingBox();
+    const toggle = await motionSwitch.boundingBox();
+    if (toggle.x < fanDial.x + fanDial.width || toggle.y >= fanDial.y + fanDial.height ||
+        toggle.y + toggle.height <= fanDial.y) throw Error('Motion switch is not beside the fan knob');
+    const airLegend = await pressureKey.boundingBox();
+    if (Math.abs(airLegend.y - thermalLegend.y) > 1 || Math.abs(airLegend.x - thermalLegend.x) > 1)
+      throw Error('Pressure legend moved between Air and Thermal');
     await page.evaluate(() => document.fonts.ready);
     const face = page.locator('.sw-face');
     await face
@@ -486,11 +513,11 @@ async (page) => {
       .waitFor({ state: 'hidden' });
     const dockBounds = await face.boundingBox();
     for (const [i, granted] of [false, true, true].entries()) {
-      await motionButton.tap();
+      await motionSwitch.tap();
       await page.waitForFunction((n) => window.motionActions.length === n, i + 1);
-      await page.locator('button[aria-pressed]:disabled', { hasText: /^motion$/i }).waitFor();
+      await page.locator('[role="switch"][aria-busy="true"]:disabled').waitFor();
       await page.evaluate((allow) => window.finishMotion(allow), granted);
-      await page.getByRole('button', { name: 'Motion', exact: true, pressed: i === 1 }).waitFor();
+      await page.getByRole('switch', { name: 'Motion', exact: true, checked: i === 1 }).waitFor();
       if (i === 0) await page.getByText('Motion access denied.', { exact: true }).waitFor();
       const currentBounds = await face.boundingBox();
       if (JSON.stringify(currentBounds) !== JSON.stringify(dockBounds))

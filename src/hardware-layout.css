@@ -552,8 +552,9 @@ body:has(.sw-dock) {
 .sw-slider-rail input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; writing-mode: vertical-lr; direction: rtl; touch-action: none; cursor: ns-resize; }
 .sw-brush-slider:has(:focus-visible) { outline: 2px solid #446d54; border-radius: 3px; }
 .sw-console { display: grid; gap: 3px; min-width: 0; }
+.sw-console[data-dials] { align-self: stretch; align-content: start; padding-top: 4px; }
 .sw-dial-row { display: flex; align-items: center; justify-content: space-evenly; gap: 7px; }
-.sw-dial-row [data-kit='knob']:not(#_):not(#_) { min-width: 0; width: auto; display: grid; grid-template-columns: var(--dial-size) 24px auto; grid-template-rows: auto auto; align-items: center; gap: 1px 3px; padding: 0; }
+.sw-dial-row [data-kit='knob']:not(#_):not(#_) { min-width: 0; width: auto; display: grid; grid-template-columns: var(--dial-size) 32px auto; grid-template-rows: auto auto; align-items: center; gap: 1px 3px; padding: 0; }
 .sw-dial-row [data-kit='knob']::after {
   content: '%';
   grid-column: 3;
@@ -564,14 +565,16 @@ body:has(.sw-dock) {
   pointer-events: none;
 }
 .sw-dial-row [data-kit='knob-dial']:not(#_):not(#_) { grid-row: 1 / 3; width: var(--dial-size); height: var(--dial-size); }
-.sw-dial-row [data-kit='knob-readout']:not(#_):not(#_) { grid-column: 2; grid-row: 2; width: 100%; min-width: 0; align-self: baseline; text-align: right; font: 12px/1.2 var(--mono); }
-.sw-dial-row [data-kit='label']:not(#_):not(#_) { grid-column: 2 / 4; grid-row: 1; align-self: end; justify-self: start; font: 9px/1.1 var(--mono); white-space: normal; }
-.sw-current-tool, .sw-air-actions, .sw-legend { font: 10px/1.2 var(--mono); color: #42493d; }
+.sw-dial-row [data-kit='knob-readout']:not(#_):not(#_) { grid-column: 2; grid-row: 2; width: 100%; min-width: 0; padding-inline: 1px; align-self: baseline; text-align: right; font: 12px/1.2 var(--mono); letter-spacing: normal; font-variant-numeric: tabular-nums; }
+.sw-dial-row [data-kit='knob'] > [data-kit='label']:not(#_):not(#_) { grid-column: 2 / 4; grid-row: 1; align-self: end; justify-self: start; font: 9px/1.1 var(--mono); white-space: normal; }
+.sw-current-tool, .sw-dial-status, .sw-legend { font: 10px/1.2 var(--mono); color: #42493d; }
 .sw-current-tool { overflow-wrap: anywhere; }
-.sw-air-actions, .sw-cameras, .sw-legend { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 4px; }
-.sw-air-actions { flex-wrap: nowrap; }
-.sw-air-actions [role='status'] { min-width: 0; overflow-wrap: anywhere; }
-.sw-air-actions [data-kit='button']:not(#_) { min-height: 32px; padding: 2px 6px; }
+.sw-cameras, .sw-legend { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.sw-dial-status { text-align: center; overflow-wrap: anywhere; }
+.sw-dial-status:empty { display: none; }
+.sw-dial-row [data-kit='switch-row']:not(#_):not(#_) { justify-content: center; gap: 4px; min-height: 44px; padding-inline: 22px; }
+.sw-dial-row [data-kit='switch']::before { right: calc(100% + 3px); }
+.sw-dial-row [data-kit='switch']::after { left: calc(100% + 3px); }
 .sw-cameras [data-kit='check'] { min-height: 32px; display: inline-flex; align-items: center; gap: 2px; }
 .sw-cameras [data-kit='label'] { font-size: 9px; }
 .sw-legend:empty, .sw-save-status:empty { display: none; }

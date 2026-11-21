@@ -4,7 +4,7 @@ import type { DOMProps } from 'expo/dom';
 import { Hardware } from '@/registry/hardware/ui/hardware';
 import { Tabs } from '@/registry/hardware/ui/tabs';
 import { FlatKnob } from '@/registry/hardware/ui/flat-knob';
-import { Button } from '@/registry/hardware/ui/button';
+import { Switch } from '@/registry/hardware/ui/switch';
 import { Checkbox } from '@/registry/hardware/ui/checkbox';
 import { views, isChecked, type Layers, type ViewName } from './views';
 import ProbeCartridge from './ProbeCartridge';
@@ -205,22 +205,20 @@ export default function HardwareDock(props: Props) {
             <BrushSlider brush={props.brush} onBrush={props.onBrush} />
             <SideKey label="Agitate" symbol="↔" disabled={props.paused} onPress={props.onAgitate} title="Shake the chamber" />
           </div>
-          <div className="sw-console">
+          <div className="sw-console" data-dials={category === 'Air' || category === 'Thermal' || undefined}>
             <div className="sw-dial-row">
               {category === 'Thermal' && <FlatKnob label="Thermal power" color="white" value={props.thermalPower ?? 100}
                 onValueChange={next => void props.onThermalPower(next)} />}
               {category === 'Air' && <FlatKnob label="Fan strength" color="white" value={power}
                 onValueChange={next => { setPower(next); void props.onPower(next); }} />}
+              {category === 'Air' && props.motionSupported && <Switch label="Motion"
+                checked={props.motionEnabled} pending={props.motionPending}
+                onCheckedChange={next => void props.onMotionChange(next)} />}
               {(category === 'Materials' || category === 'Thermal' || category === 'Build') &&
                 <span className="sw-current-tool">{props.probeMode && category === 'Thermal' && thermal ? 'Probe + ' : ''}
                   {props.sourceMode ? 'Source · ' : ''}{equipped?.name ?? props.tool}
                   {category === 'Materials' && equipped && !slots.includes(equipped.id) ? ' · Unbound' : ''}</span>}
             </div>
-            {category === 'Air' && <div className="sw-air-actions">
-              {props.motionSupported && <Button aria-pressed={props.motionEnabled} aria-busy={props.motionPending}
-                disabled={props.motionPending} onClick={() => props.onMotionChange(!props.motionEnabled)}>Motion</Button>}
-              <span role="status">{props.motionStatus || props.feedback}</span>
-            </div>}
             {category === 'World' && <div role="group" aria-label="Camera" className="sw-cameras">
               {views.map(view => <Checkbox key={view} label={view} checked={isChecked(props.camera, view)}
                 onCheckedChange={checked => void props.onViewChange(view, checked)} />)}
@@ -231,9 +229,10 @@ export default function HardwareDock(props: Props) {
               {props.camera.Air && <span>› flow</span>}
               {category === 'World' && <span className="sw-save-status" role="status">{saveStatus ||
                 (isChecked(props.camera, 'Normal') ? props.updateLabel : '')}</span>}
-              {category === 'Thermal' && !props.probeMode && props.reading !== null &&
-                <output aria-label="Brush temperature">{props.reading} °C</output>}
             </div>
+            {category === 'Air' && <span className="sw-dial-status" role="status">{props.motionStatus || props.feedback}</span>}
+            {category === 'Thermal' && !props.probeMode && props.reading !== null &&
+              <output className="sw-dial-status" aria-label="Brush temperature">{props.reading} °C</output>}
           </div>
           <Transport paused={props.paused} onPlayback={props.onPlayback} onStep={props.onStep} />
         </div>
