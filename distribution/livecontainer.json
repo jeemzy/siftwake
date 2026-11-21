@@ -1,0 +1,38 @@
+{
+  "name": "Siftwake",
+  "identifier": "com.jeemzy.siftwake.source",
+  "website": "https://github.com/jeemzy/siftwake",
+  "apps": [
+    {
+      "name": "Siftwake",
+      "bundleIdentifier": "com.jeemzy.siftwake",
+      "developerName": "jeemzy",
+      "subtitle": "Falling-sand sandbox",
+      "localizedDescription": "Paint materials, build wind tunnels, and experiment with pressure and heat.",
+      "versions": [
+        {
+          "version": "0.3.0",
+          "buildVersion": "1",
+          "buildNumber": "1",
+          "minOSVersion": "16.4",
+          "date": "2026-11-21T00:07:43Z",
+          "localizedDescription": "GitHub release ios-4-1.\n\nUnsigned device IPA. Production OTA runtime 684e4d897d59c2050981434acd3f2e2eb3e236d9.",
+          "downloadURL": "https://github.com/jeemzy/siftwake/releases/download/ios-4-1/Siftwake-unsigned.ipa",
+          "size": 18419748,
+          "sha256": "cb3138a1117c807f0218d8a40ecffac92529adb17c612b0e3c52093dbf3fab52"
+        },
+        {
+          "version": "0.3.0",
+          "buildVersion": "1",
+          "buildNumber": "1",
+          "minOSVersion": "16.4",
+          "date": "2026-11-19T13:16:44Z",
+          "localizedDescription": "GitHub release ios-3-1.\n\nUnsigned device IPA. Production OTA runtime 997413a03ab9d0ebc81f41ab3952d0ffe9317027.",
+          "downloadURL": "https://github.com/jeemzy/siftwake/releases/download/ios-3-1/Siftwake-unsigned.ipa",
+          "size": 18638316,
+          "sha256": "9f7d12b50c822d2f459d063e1cb34cb1c7df34485f3f1f5285c942c32f8dc1eb"
+        }
+      ]
+    }
+  ]
+}
