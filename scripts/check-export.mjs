@@ -82,6 +82,7 @@ try {
     ['replay', '/'],
     ['material-editor', '/', { width: 375, height: 667 }],
     ['material-editor', '/', { width: 393, height: 852 }],
+    ['ipa-controls', '/panels/', { width: 320, height: 568 }],
     ['ipa-controls', '/panels/', { width: 375, height: 667 }],
     ['ipa-controls', '/panels/', { width: 393, height: 852 }],
   ];

@@ -568,6 +568,8 @@ body:has(.sw-dock) {
 .sw-current-tool, .sw-air-actions, .sw-legend { font: 10px/1.2 var(--mono); color: #42493d; }
 .sw-current-tool { overflow-wrap: anywhere; }
 .sw-air-actions, .sw-cameras, .sw-legend { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.sw-air-actions { flex-wrap: nowrap; }
+.sw-air-actions [role='status'] { min-width: 0; overflow-wrap: anywhere; }
 .sw-air-actions [data-kit='button']:not(#_) { min-height: 32px; padding: 2px 6px; }
 .sw-cameras [data-kit='check'] { min-height: 32px; display: inline-flex; align-items: center; gap: 2px; }
 .sw-cameras [data-kit='label'] { font-size: 9px; }
