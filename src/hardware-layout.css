@@ -554,7 +554,7 @@ body:has(.sw-dock) {
 .sw-console { display: grid; gap: 3px; min-width: 0; }
 .sw-console[data-dials] { align-self: stretch; align-content: start; padding-top: 4px; }
 .sw-dial-row { display: flex; align-items: center; justify-content: space-evenly; gap: 7px; }
-.sw-dial-row [data-kit='knob']:not(#_):not(#_) { min-width: 0; width: auto; display: grid; grid-template-columns: var(--dial-size) 32px auto; grid-template-rows: auto auto; align-items: center; gap: 1px 3px; padding: 0; }
+.sw-dial-row [data-kit='knob']:not(#_):not(#_) { min-width: 0; width: auto; display: grid; grid-template-columns: var(--dial-size) 38px auto; grid-template-rows: auto auto; align-items: center; gap: 1px 3px; padding: 0; }
 .sw-dial-row [data-kit='knob']::after {
   content: '%';
   grid-column: 3;

@@ -484,14 +484,16 @@ async (page) => {
     async function checkMaximum(control) {
       await control.press('End');
       await control.blur();
-      const fits = await control.evaluate(el => {
+      const metrics = await control.evaluate(el => {
         const ctx = document.createElement('canvas').getContext('2d');
         const style = getComputedStyle(el);
         ctx.font = style.fontSize + ' ' + style.fontFamily;
-        return el.value === '100' && el.scrollWidth <= el.clientWidth &&
-          ctx.measureText(el.value).width <= el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        return { value: el.value, scroll: el.scrollWidth, client: el.clientWidth,
+          glyphs: ctx.measureText(el.value).width,
+          available: el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) };
       });
-      if (!fits) throw Error('Maximum knob value is clipped');
+      if (metrics.value !== '100' || metrics.scroll > metrics.client || metrics.glyphs > metrics.available)
+        throw Error('Maximum knob value or fit: ' + JSON.stringify(metrics));
     }
     await checkMaximum(knob);
     await page.getByRole('tab', { name: 'Air', exact: true }).click();
