@@ -1,13 +1,22 @@
-import React, { useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { AppState, StyleSheet, View } from 'react-native';
 
 export type StrokeProps = {
   sample: (x: number, y: number, start: boolean) => void;
-  end: () => void;
+  end: (interrupted: boolean) => void;
 };
 
 export default function StrokeSurface({ sample, end }: StrokeProps) {
   const finger = useRef<number | null>(null);
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' && finger.current !== null) {
+        finger.current = null;
+        end(true);
+      }
+    });
+    return () => listener.remove();
+  }, [end]);
   return (
     <View
       testID="world"
@@ -29,11 +38,11 @@ export default function StrokeSurface({ sample, end }: StrokeProps) {
         if (!touch) return;
         sample(touch.locationX, touch.locationY, false);
         finger.current = null;
-        end();
+        end(false);
       }}
       onTouchCancel={() => {
         finger.current = null;
-        end();
+        end(true);
       }}
     />
   );

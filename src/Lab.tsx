@@ -1,41 +1,54 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import HardwareDock from './HardwareDock';
 import { World, type Scene, type Tool, type ProbeReading } from './world';
 import Board from './Board';
 import { saveAndRestart } from './updateCheck';
-import { groups, swatches } from './tools';
+import { groups } from './tools';
 import { loadSession, saveSession } from './storage';
 import { checkUpdate, applyUpdate, updateLabel } from './ota';
-import type { Editor, Session } from './checkpoint';
+import { classicHotbar, defaultHotbar, type Editor, type Session } from './checkpoint';
 import { changeLayer, normal } from './views';
 import { usePhoneMotion } from './usePhoneMotion';
 
 const panelProps = {
   useExpoDOMWebView: false,
-  scrollEnabled: false,
-  bounces: false,
-  style: { flex: 1, backgroundColor: '#efefeb' },
-} as const;
-const editorPanelProps = {
-  ...panelProps,
   scrollEnabled: true,
+  bounces: false,
   style: { flex: 1, backgroundColor: 'transparent' },
 } as const;
+const panelTop = 5;
+const panelBottom = 25;
 
 function checkpointKey({ world, editor: { motionEnabled = false, ...editor } }: Session) {
   return JSON.stringify([world.ticks, world.edits, world.strength, editor, motionEnabled]);
 }
 
 export default function Lab() {
+  const { width: windowWidth } = useWindowDimensions();
+  const [layoutHeight, setLayoutHeight] = useState(0);
+  const [clipHeight, setClipHeight] = useState(0);
+  const nativeHost = Platform.OS !== 'web';
+  const viewportHeight = Math.max(0, layoutHeight - panelTop - panelBottom);
   const [loaded] = useState(loadSession);
   const restored = loaded.session?.editor;
   const [world, setWorld] = useState(() => loaded.session?.world ?? new World('Tunnel'));
   const [scene, setScene] = useState<Scene>(restored?.scene ?? 'Tunnel');
   const [paused, setPaused] = useState(true);
-  const [tool, setTool] = useState<Tool>(restored?.tool ?? 'Sand');
+  const [tool, setTool] = useState<Tool>(restored?.tool ?? defaultHotbar[0]);
   const [brush, setBrush] = useState(restored?.brush ?? 3);
+  const [hotbar, setHotbar] = useState<(number | null)[]>(
+    restored?.hotbar ?? [...(restored ? classicHotbar : defaultHotbar)],
+  );
+  const [probeMode, setProbeMode] = useState(restored?.probeMode ?? false);
+  const toolBeforeProbe = useRef<Tool>(tool === 'Probe'
+    ? hotbar.find((id) => id !== null) ?? defaultHotbar[0] : tool);
+  const [thermalPower, setThermalPower] = useState(restored?.thermalPower ?? 100);
+  const [sourceMode, setSourceMode] = useState(restored?.sourceMode ?? false);
+  const [agitatePulse, setAgitatePulse] = useState(0);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const resumeOnClose = useRef(false);
   const [camera, setCamera] = useState(restored?.camera ?? normal);
   const [probe, setProbe] = useState<ProbeReading | null>(null);
   const [reading, setReading] = useState<number | null>(null);
@@ -50,14 +63,18 @@ export default function Lab() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [motionEnabled, setMotionEnabled] = useState(restored?.motionEnabled ?? false);
   const motion = usePhoneMotion(motionEnabled, setMotionEnabled, !paused && !applying);
-  const expandedDock = editorOpen && Platform.OS !== 'web';
+  // A web dialog uses the browser's top layer. On native open the touch clip
+  // over the board, keeping the WebView's viewport and screen origin fixed.
+  const expandedDock = (inventoryOpen || editorOpen) && Platform.OS !== 'web';
   const locked = useRef(false),
     drawing = useRef(false),
     waiting = useRef(false);
-  const latest = useRef({ world, editor: { scene, tool, brush, camera, category, motionEnabled } });
+  const latest = useRef<Session>({ world, editor: { scene, tool, brush, camera, category, motionEnabled,
+    hotbar, thermalPower, sourceMode, probeMode } });
   useLayoutEffect(() => {
-    latest.current = { world, editor: { scene, tool, brush, camera, category, motionEnabled } };
-  }, [world, scene, tool, brush, camera, category, motionEnabled]);
+    latest.current = { world, editor: { scene, tool, brush, camera, category, motionEnabled,
+      hotbar, thermalPower, sourceMode, probeMode } };
+  }, [world, scene, tool, brush, camera, category, motionEnabled, hotbar, thermalPower, sourceMode, probeMode]);
   const saved = useRef<{ world: World; key: string } | null>(
     loaded.session ? { world: loaded.session.world, key: checkpointKey(loaded.session) } : null,
   );
@@ -135,6 +152,22 @@ export default function Lab() {
     drawing.current = active;
     if (!active && waiting.current) void restart();
   }
+  function selectTool(next: Tool) {
+    if (locked.current || (next === 'Probe' && category !== 'Thermal')) return;
+    if (next === 'Probe') {
+      if (!probeMode && tool !== 'Probe') toolBeforeProbe.current = tool;
+      setProbeMode(true);
+    } else if (category !== 'Thermal' || (next !== 'Heat' && next !== 'Cool')) {
+      setProbeMode(false);
+    }
+    setSourceMode(false);
+    setTool(next);
+    setFeedback('');
+  }
+  function closeProbe() {
+    setProbeMode(false);
+    setTool((current) => current === 'Probe' ? toolBeforeProbe.current : current);
+  }
   async function load(next: Scene) {
     if (locked.current) return;
     motion.clear();
@@ -148,7 +181,8 @@ export default function Lab() {
   return (
     <SafeAreaProvider style={s.root}>
       <SafeAreaView style={s.screen}>
-        <View style={s.layout}>
+        <View style={s.layout} onLayout={Platform.OS === 'web' ? undefined :
+          event => setLayoutHeight(event.nativeEvent.layout.height)}>
           {(notice || (ready && !later)) && (
             <View style={s.notice}>
               <Text style={s.noticeText}>
@@ -169,6 +203,11 @@ export default function Lab() {
             </View>
           )}
           <Board
+            probeMode={probeMode}
+            inputBlocked={inventoryOpen || editorOpen || applying}
+            sourceMode={sourceMode}
+            thermalPower={thermalPower}
+            agitatePulse={agitatePulse}
             locked={locked}
             onStroke={stroke}
             readMotion={motion.read}
@@ -184,96 +223,126 @@ export default function Lab() {
             report={setFeedback}
           />
           <View style={s.dock} pointerEvents="none" />
-          <View style={[s.dockPanel, expandedDock && s.editorPanel]}>
-            <HardwareDock
-              dom={expandedDock ? editorPanelProps : panelProps}
-              expanded={expandedDock}
-              paused={paused}
-              onPlayback={async () => {
-                if (!locked.current) {
-                  motion.clear();
-                  setPaused((v) => !v);
-                }
-              }}
-              onStep={async () => {
-                if (paused && !locked.current) {
-                  world.step();
-                  setRevision((n) => n + 1);
-                }
-              }}
-              probe={probe}
-              groups={groups}
-              swatches={swatches}
-              materials={world.customMaterials}
-              tool={tool}
-              brush={brush}
-              scene={scene}
-              camera={camera}
-              reading={reading}
-              feedback={feedback}
-              category={category}
-              sceneGeneration={sceneGeneration}
-              power={Math.round(world.strength * 100)}
-              motionSupported={motion.supported}
-              motionEnabled={motionEnabled}
-              motionPending={motion.pending || applying}
-              motionStatus={motion.status}
-              onMotionChange={async (enabled) => {
-                if (!locked.current) await motion.change(enabled);
-              }}
-              updateLabel={updateLabel}
-              updateReady={ready && later}
-              onRestart={restart}
-              onSave={async () => {
-                if (!loaded.writable) return 'Saved world is read-only.';
-                if (locked.current) return 'World is restarting.';
-                try {
-                  checkpoint();
-                  return 'World saved.';
-                } catch {
-                  return 'World could not be saved.';
-                }
-              }}
-              onEditorVisibility={async (visible) => {
-                if (visible) {
-                  motion.clear();
-                  setPaused(true);
-                }
-                setEditorOpen(visible);
-              }}
-              onMaterial={async (id, draft) => {
-                if (locked.current) return { errors: { form: 'World is restarting.' } };
-                const result = world.saveMaterial(id, draft);
-                if ('id' in result) {
-                  setTool(result.id);
-                  setRevision((n) => n + 1);
-                  setFeedback('');
-                }
-                return result;
-              }}
-              onTool={async (next) => {
-                if (locked.current) return;
-                setTool(next);
-                setFeedback('');
-              }}
-              onCategory={async (next) => {
-                if (!locked.current) {
-                  setCategory(next);
-                  setFeedback('');
-                }
-              }}
-              onBrush={async (next) => {
-                if (!locked.current) setBrush(next);
-              }}
-              onPower={async (next) => {
-                if (locked.current) return;
-                world.strength = next / 100;
-              }}
-              onScene={load}
-              onViewChange={async (view, enabled) => {
-                if (!locked.current) setCamera((previous) => changeLayer(previous, view, enabled));
-              }}
-            />
+          <View style={[s.dockPanel, nativeHost && s.nativeClip, windowWidth <= 350 && s.fullDockWidth, expandedDock && s.editorPanel]}
+            onLayout={nativeHost ? event => setClipHeight(event.nativeEvent.layout.height) : undefined}>
+            {/* Resize the input and clipping bounds while keeping WKWebView's backing surface stationary. */}
+            <View style={nativeHost ? [s.nativePanelSurface, { height: viewportHeight }] : s.webPanelSurface}>
+              <HardwareDock
+                inventoryViewportHeight={nativeHost ? viewportHeight : undefined}
+                probeMode={probeMode}
+                onProbeMode={async (enabled) => {
+                  if (locked.current) return;
+                  if (enabled) selectTool('Probe');
+                  else closeProbe();
+                }}
+                hotbar={hotbar}
+                inventoryOpen={inventoryOpen}
+                sourceMode={sourceMode}
+                thermalPower={thermalPower}
+                onHotbarChange={async (slots) => { if (!locked.current) setHotbar(slots); }}
+                onSourceMode={async (enabled) => { if (!locked.current) setSourceMode(enabled); }}
+                onThermalPower={async (power) => { if (!locked.current) setThermalPower(power); }}
+                onAgitate={async () => {
+                  if (!locked.current && !paused) setAgitatePulse((n) => n + 1);
+                }}
+                onInventoryVisibility={async (open) => {
+                  if (locked.current || inventoryOpen === open) return;
+                  if (open) {
+                    resumeOnClose.current = !paused;
+                    motion.clear();
+                    setPaused(true);
+                  } else if (resumeOnClose.current) {
+                    resumeOnClose.current = false;
+                    setPaused(false);
+                  }
+                  setInventoryOpen(open);
+                }}
+                dom={panelProps}
+                expanded={expandedDock && viewportHeight > 0 && Math.abs(clipHeight - viewportHeight) <= 1}
+                paused={paused}
+                onPlayback={async () => {
+                  if (!locked.current) {
+                    motion.clear();
+                    setPaused((v) => !v);
+                  }
+                }}
+                onStep={async () => {
+                  if (paused && !locked.current) {
+                    world.step();
+                    setRevision((n) => n + 1);
+                  }
+                }}
+                probe={probe}
+                groups={groups}
+                materials={world.customMaterials}
+                tool={tool}
+                brush={brush}
+                scene={scene}
+                camera={camera}
+                reading={reading}
+                feedback={feedback}
+                category={category}
+                sceneGeneration={sceneGeneration}
+                power={Math.round(world.strength * 100)}
+                motionSupported={motion.supported}
+                motionEnabled={motionEnabled}
+                motionPending={motion.pending || applying}
+                motionStatus={motion.status}
+                onMotionChange={async (enabled) => {
+                  if (!locked.current) await motion.change(enabled);
+                }}
+                updateLabel={updateLabel}
+                updateReady={ready && later}
+                onRestart={restart}
+                onSave={async () => {
+                  if (!loaded.writable) return 'Saved world is read-only.';
+                  if (locked.current) return 'World is restarting.';
+                  try {
+                    checkpoint();
+                    return 'World saved.';
+                  } catch {
+                    return 'World could not be saved.';
+                  }
+                }}
+                onEditorVisibility={async (visible) => {
+                  if (visible) {
+                    motion.clear();
+                    setPaused(true);
+                  }
+                  setEditorOpen(visible);
+                }}
+                onMaterial={async (id, draft) => {
+                  if (locked.current) return { errors: { form: 'World is restarting.' } };
+                  const result = world.saveMaterial(id, draft);
+                  if ('id' in result) {
+                    selectTool(result.id);
+                    setRevision((n) => n + 1);
+                  }
+                  return result;
+                }}
+                onTool={async (next) => {
+                  selectTool(next);
+                }}
+                onCategory={async (next) => {
+                  if (!locked.current) {
+                    if (next !== 'Thermal') closeProbe();
+                    setCategory(next);
+                    setFeedback('');
+                  }
+                }}
+                onBrush={async (next) => {
+                  if (!locked.current) setBrush(next);
+                }}
+                onPower={async (next) => {
+                  if (locked.current) return;
+                  world.strength = next / 100;
+                }}
+                onScene={load}
+                onViewChange={async (view, enabled) => {
+                  if (!locked.current) setCamera((previous) => changeLayer(previous, view, enabled));
+                }}
+              />
+            </View>
           </View>
           <Text accessibilityRole="header" style={s.logo}>
             Siftwake
@@ -311,7 +380,11 @@ const s = StyleSheet.create({
     gap: 6,
   },
   logo: { color: '#63655f', textAlign: 'center', fontSize: 11, lineHeight: 14, fontWeight: '600' },
-  dock: { height: 255 },
-  dockPanel: { position: 'absolute', left: 8, right: 8, bottom: 25, height: 255 },
-  editorPanel: { top: 5, height: 'auto', zIndex: 10 },
+  dock: { height: 237 },
+  dockPanel: { position: 'absolute', left: 8, right: 8, bottom: panelBottom, height: 237 },
+  nativePanelSurface: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  nativeClip: { overflow: 'hidden' },
+  webPanelSurface: { flex: 1 },
+  fullDockWidth: { left: 0, right: 0 },
+  editorPanel: { top: panelTop, height: 'auto', zIndex: 10 },
 });

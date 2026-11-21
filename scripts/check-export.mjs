@@ -63,16 +63,35 @@ try {
     args: ['--enable-unsafe-swiftshader'],
   });
   const legacy = gunzipSync(readFileSync('tests/fixtures/world-0.3.0.bin.gz')).toString('base64');
-  for (const [test, path, viewport] of [
+  const legacyV2 = gunzipSync(readFileSync('tests/fixtures/world-bd283ab-v2.bin.gz')).toString(
+    'base64',
+  );
+  const scenario = (name) =>
+    runInThisContext(readFileSync('tests/' + name + '.playwright.js', 'utf8'), {
+      filename: 'tests/' + name + '.playwright.js',
+    });
+  const failures = [];
+  const selected = process.argv.slice(4);
+  const cases = [
     ['tunnel', '/'],
     ['water', '/'],
     ['cameras', '/'],
     ['probe', '/'],
+    ['inventory', '/', { width: 320, height: 568 }],
+    ['devices', '/', { width: 375, height: 667 }],
+    ['replay', '/'],
     ['material-editor', '/', { width: 375, height: 667 }],
     ['material-editor', '/', { width: 393, height: 852 }],
     ['ipa-controls', '/panels/', { width: 375, height: 667 }],
     ['ipa-controls', '/panels/', { width: 393, height: 852 }],
-  ]) {
+  ];
+  for (const name of selected)
+    assert(
+      cases.some(([test]) => test === name),
+      'Unknown scenario ' + name,
+    );
+  for (const [test, path, viewport] of cases) {
+    if (selected.length && !selected.includes(test)) continue;
     const page = await browser.newPage(
       viewport
         ? { viewport, isMobile: true, hasTouch: true }
@@ -80,16 +99,23 @@ try {
     );
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    await page.goto('http://127.0.0.1:' + server.address().port + path);
-    const run = runInThisContext(readFileSync('tests/' + test + '.playwright.js', 'utf8'));
-    console.log(
-      test,
-      viewport ? `${viewport.width}x${viewport.height}` : '',
-      await run(page, legacy),
-    );
-    assert.deepEqual(pageErrors, []);
-    await page.close();
+    page.on('response', (response) => {
+      if (response.status() >= 400) pageErrors.push(response.status() + ' ' + response.url());
+    });
+    try {
+      await page.goto('http://127.0.0.1:' + server.address().port + path);
+      const run = scenario(test);
+      const result = await run(page, legacy, legacyV2);
+      assert.deepEqual(pageErrors, []);
+      console.log(test, viewport ? `${viewport.width}x${viewport.height}` : '', result);
+    } catch (error) {
+      failures.push(new Error(test + ' ' + (viewport?.width ?? 'desktop'), { cause: error }));
+      console.error(test, viewport?.width ?? 'desktop', error, pageErrors);
+    } finally {
+      await page.close();
+    }
   }
+  if (failures.length) throw new AggregateError(failures, 'Export scenarios failed');
 } finally {
   await browser?.close();
   server.close();

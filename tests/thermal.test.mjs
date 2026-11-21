@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { World, W, H, M, tile } from '../src/world.ts';
+import { World, W, H, A, M, tile } from '../src/world.ts';
 import { rasterize } from '../src/raster.ts';
 import { normal, changeLayer, isChecked } from '../src/views.ts';
 
@@ -18,6 +18,177 @@ function brush(w, tool, material, taps) {
   for (let n = 0; n < taps; n++) w.paint(tool, i % W, Math.floor(i / W), 0);
   w.step();
 }
+
+function sealedTile() {
+  const w = new World();
+  for (const [x, y] of [[76, 80], [84, 80], [80, 76], [80, 84]]) w.paint('Wall', x, y);
+  return w;
+}
+
+test('air strokes pressurize or depressurize a sealed chamber, then vent through an opening', () => {
+  const t = tile(80, 80);
+  for (const [tool, sign] of [['Heat', 1], ['Cool', -1]]) {
+    const w = sealedTile();
+    w.paint(tool, 82, 82, 1);
+    const initial = sign * w.pressure[t];
+    assert.ok(initial > 0.5);
+    const twin = World.restore(w.snapshot());
+    run(w, 120);
+    run(twin, 120);
+    assert.deepEqual(w.pressure, twin.pressure);
+    assert.ok(sign * w.pressure[t] > initial * 0.8 && sign * w.pressure[t] < initial);
+    assert.equal(w.pressure[t + 2], 0);
+    assert.equal(w.airTemperature[t + 2], 20);
+    assert.equal(w.u[t], 0);
+
+    const held = sign * w.pressure[t];
+    w.paint('Erase', 84, 80, 0);
+    w.step();
+    assert.ok(sign * w.u[t] > 0.1);
+    run(w, 45);
+    assert.ok(Math.abs(w.pressure[t]) < held * 0.25);
+  }
+});
+
+test('a constant thermal source at equilibrium produces no further pressure or flow', () => {
+  const t = tile(80, 80);
+  for (const [tool, sign] of [['Heat', 1], ['Cool', -1]]) {
+    const w = sealedTile();
+    assert.ok(w.placeSource(tool, 82, 82, 1, 100));
+    assert.equal(w.pressure[t], 0);
+    run(w, 20);
+    const pressure = w.pressure[t];
+    const temperature = w.airTemperature[t];
+    assert.ok(pressure * sign > 0.5 && Math.abs(pressure) <= 12);
+    run(w, 240);
+    assert.equal(w.airTemperature[t], temperature);
+    assert.equal(w.pressure[t], pressure);
+    assert.equal(w.pressure[t + 2], 0);
+    assert.ok(w.u.every(v => v === 0) && w.v.every(v => v === 0));
+  }
+});
+
+test('hot and cold air carry heat in opposite directions as gravity rotates', () => {
+  const t = tile(80, 80);
+  for (const [tool, sign] of [['Heat', -1], ['Cool', 1]]) {
+    for (const [gx, gy] of [[0, 1], [1, 0], [-0.6, -0.8]]) {
+      const w = new World();
+      w.paint(tool, 80, 80, 0);
+      for (let k = 0; k < 8; k++) w.step({ gravityX: gx, gravityY: gy, shakeX: 0, shakeY: 0 });
+      const vx = (w.u[t] + w.u[t - 1]) / 2;
+      const vy = (w.v[t] + w.v[t - A]) / 2;
+      assert.ok(sign * (gx * vx + gy * vy) > 0.09);
+      assert.ok(Math.abs(gx * vy - gy * vx) < 0.01);
+      let thermalMoment = 0;
+      for (let k = 0; k < w.airTemperature.length; k++) {
+        const distance = ((k % A) - 20) * gx + (Math.floor(k / A) - 20) * gy;
+        thermalMoment += distance * Math.abs(w.airTemperature[k] - 20);
+      }
+      assert.ok(sign * thermalMoment > 1);
+    }
+  }
+});
+
+test('a tile filled with fog admits a gust while a tile filled with copper blocks most of it', () => {
+  function speed(material) {
+    const w = new World();
+    if (material !== M.Empty) {
+      for (let y = 80; y < 84; y++)
+        for (let x = 80; x < 84; x++) w.paint(material, x, y, 0);
+    }
+    w.gust(82, 82, 2, 0);
+    w.step();
+    return w.u[tile(82, 82)];
+  }
+  const open = speed(M.Empty);
+  assert.ok(open > 0.9);
+  assert.equal(speed(M.Fog), open);
+  assert.ok(speed(M.Copper) < open * 0.05);
+});
+
+test('water and steam share a pressure-adjusted latent threshold of 100 °C at neutral pressure', () => {
+  function trial(material, temperature, device) {
+    const w = sealedTile();
+    if (device) {
+      w.paint(device, 82, 82);
+      run(w, 18);
+      w.paint('Erase', 82, 82, 0);
+    }
+    w.paint(material, 80, 80, 0);
+    w.temperature[at(80, 80)] = temperature;
+    // Cancel particle-to-air exchange for this tick, keeping chamber pressure fixed.
+    w.paint(M.Rock, 83, 83, 0);
+    w.temperature[at(83, 83)] = 40 - temperature;
+    w.step();
+    return w;
+  }
+  for (const [material, temperature] of [[M.Water, 145], [M.Steam, 65]]) {
+    const plateau = device => {
+      const w = trial(material, temperature, device);
+      return w.temperature[single(w, material)];
+    };
+    assert.equal(plateau(null), 100);
+    assert.ok(plateau('Suction') < 95);
+    assert.ok(plateau('Pressure') > 105);
+  }
+  single(trial(M.Water, 165, 'Suction'), M.Steam);
+  single(trial(M.Water, 165, 'Pressure'), M.Water);
+  single(trial(M.Steam, 35, 'Suction'), M.Steam);
+  single(trial(M.Steam, 35, 'Pressure'), M.Water);
+});
+
+test('chilled air turns condensing steam into one airborne fog particle', () => {
+  function condense(chilled, vapor) {
+    const w = new World();
+    w.strength = 1;
+    w.paint('Fan', 64, 82);
+    if (chilled) w.paint('Cool', 82, 82, 1, 20);
+    if (vapor) {
+      w.paint(M.Steam, 82, 82, 0);
+      w.paint('Cool', 82, 82, 0, 80);
+    }
+    w.step();
+    return w;
+  }
+  single(condense(false, true), M.Water);
+  assert.equal(condense(true, false).cells.some(Boolean), false);
+  const w = condense(true, true);
+  const initial = single(w, M.Fog);
+  assert.equal(w.cells.filter(Boolean).length, 1);
+  assert.ok(w.temperature[initial] < 20);
+  run(w, 20);
+  assert.ok(single(w, M.Fog) % W > initial % W + 4);
+  assert.equal(w.cells.filter(Boolean).length, 1);
+});
+
+test('a moving plume thins over time, resumes its countdown after a save and frees its cells', () => {
+  for (const [material, middle, last] of [[M.Smoke, 330, 420], [M.Steam, 240, 300]]) {
+    const w = new World();
+    // Keep steam hot so that this experiment measures dissipation alone.
+    if (material === M.Steam) w.airTemperature.fill(400);
+    for (let x = 30; x < 94; x++) w.paint(material, x, 60, 0);
+    run(w, middle);
+    const count = w.cells.filter(m => m === material).length;
+    assert.ok(count > 0 && count < 64, 'Some of the original plume should remain');
+    const resumed = World.restore(w.snapshot());
+    run(w, last - middle);
+    run(resumed, last - middle);
+    assert.ok(!w.cells.some(Boolean));
+    assert.ok(!w.aux.some(Boolean));
+    assert.deepEqual(resumed.snapshot(), w.snapshot());
+  }
+});
+
+test('condensation wins on the last tick of a steam particle', () => {
+  const w = new World();
+  w.paint(M.Steam, 80, 80, 0);
+  w.aux[at(80, 80)] = 1;
+  w.paint('Cool', 80, 80, 0, 80);
+  w.step();
+  const drop = single(w, M.Water);
+  assert.equal(w.aux[drop], 0);
+});
+
 test('material temperature travels with a grain; neighboring wood and downwind air exchange heat', () => {
   const w = new World();
   w.paint('Sand', 25, 25, 0);

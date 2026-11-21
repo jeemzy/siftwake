@@ -169,8 +169,8 @@ test('shake moves gas while a sealed wall, fixed material and device keep their 
   const world = new World();
   for (let y = 0; y < H; y += 4) world.paint('Wall', 100, y);
   world.paint('Wood', 70, 80, 0);
-  world.paint('Fan', 65, 82);
   world.strength = 0;
+  world.paint('Fan', 65, 82);
   for (let y = 85; y < 117; y++) world.paint('Smoke', 96, y, 0);
   for (let i = 0; i < 24; i++) world.step({ ...neutral, gravityX: 1, gravityY: 0, shakeX: 1 });
   assert.equal(read(world, 70, 80), M.Wood);

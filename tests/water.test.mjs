@@ -22,6 +22,8 @@ test('one water cell and one orthogonally touching grain produce wet sand in pla
     w.step();
     assert.equal(w.cells[grain], M.WetSand);
     assert.equal(w.cells[grain + dx + dy * W], M.Empty);
+    assert.equal(w.amount[grain], 1);
+    assert.equal(w.amount[grain + dx + dy * W], 0);
     assert.equal(w.cells.filter(Boolean).length, 1);
     w.step();
     assert.equal(w.cells[grain + W], M.WetSand);

@@ -1,5 +1,6 @@
 // Run against the water worktree with playwright-cli run-code --filename tests/water.playwright.js.
 async (page) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.reload();
   const control = (name) => {
     const options = { name, exact: true };
@@ -8,15 +9,30 @@ async (page) => {
   await control('World').click();
   await control('Blank canvas').click();
   await control('Materials').click();
-  await control('Fine').click();
+  await page.getByRole('slider', { name: 'Brush size' }).press('Home');
   const board = page.getByTestId('world');
+  // A fractional canvas origin blends adjacent cell colors when Chrome composites the image.
+  // Give each cell two whole screen pixels before checking the one-cell reaction boundary.
+  const initial = await board.boundingBox();
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport.width, height: viewport.height + 480 - Math.round(initial.height) });
+  await page.waitForFunction(() => {
+    const r = document.querySelector('[data-testid="world"]').getBoundingClientRect();
+    return r.width === 320 && r.height === 480 && Number.isInteger(r.left) && Number.isInteger(r.top);
+  });
   const bounds = await board.boundingBox();
   const point = (x, y) => ({
     x: bounds.x + (bounds.width * (x + 0.5)) / 160,
     y: bounds.y + (bounds.height * (y + 0.5)) / 240,
   });
   async function paint(tool, x, y) {
-    await control(tool).click();
+    await control('Inventory').click();
+    const inventory = page.getByRole('dialog', { name: 'Material inventory' });
+    await inventory.getByLabel('Search materials').fill(tool);
+    await inventory.getByRole('region', { name: 'Material catalog' })
+      .getByRole('button', { name: tool, exact: true }).click();
+    await control('Use').click();
+    await inventory.waitFor({ state: 'hidden' });
     const p = point(x, y);
     await page.mouse.click(p.x, p.y);
   }

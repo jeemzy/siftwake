@@ -71,23 +71,34 @@ async (page) => {
   await check('Normal').click();
   await check('Heat').click();
   await tab('Materials').click();
-  await button('Wood').click();
+  await button('Inventory').click();
+  const inventory = page.getByRole('dialog', { name: 'Material inventory' });
+  await inventory.getByLabel('Search materials').fill('Wood');
+  await inventory.getByRole('region', { name: 'Material catalog' })
+    .getByRole('button', { name: 'Wood', exact: true }).click();
+  await button('Use').click();
+  await inventory.waitFor({ state: 'hidden' });
   await tap(80, 80);
   const cold = await rgb(await frame(), 80, 80);
   await tab('Thermal').click();
+  await button('Probe').click();
+  const readings = page.getByRole('group', { name: 'Probe readings' });
+  await readings.waitFor();
   await button('Heat').click();
   await tap(80, 80);
   const hot = await rgb(await frame(), 80, 80);
   if (
-    (await page.getByLabel('Brush temperature').innerText()) !== '240 °C' ||
+    parseFloat(await readings.getByLabel('Temperature', { exact: true }).innerText()) !== 240 ||
     hot[0] < cold[0] + 60
   )
     throw Error('Heat brush/readout mismatch');
   await button('Cool').click();
   await tap(80, 80);
   const cooled = await rgb(await frame(), 80, 80);
-  if ((await page.getByLabel('Brush temperature').innerText()) !== '120 °C' || cooled[0] >= hot[0])
+  if (parseFloat(await readings.getByLabel('Temperature', { exact: true }).innerText()) !== 120 || cooled[0] >= hot[0])
     throw Error('Cool brush/readout mismatch');
+  await button('Probe only').click();
+  await button('Close probe').click();
   // Render two otherwise identical fan scenes with opposite jets. Count bright streamline pixels on each side.
   async function jet(turns) {
     await tab('World').click();

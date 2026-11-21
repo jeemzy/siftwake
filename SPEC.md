@@ -12,7 +12,14 @@ I develop on Windows and have a physical iPhone. Everyday changes to materials, 
 
 Build Siftwake as an Expo app with a touch canvas, a fixed-step simulation, and a local material editor. Launch it in Expo Go from a Windows development server. The player can paint, pause, advance one tick, build chambers, place air devices, and save a world together with the materials it uses. The play screen has no advertising, purchases, or game-account prompt.
 
-Sandboxels establishes that this kind of game can run client-side. Its public source combines JavaScript material behavior with browser rendering and controls. Use it as a reference for how materials interact. Use established methods and evaluate suitable source code for license compatibility and attribution before integrating it. Tune behavior against the agreed experiments. Its rendering surface is native Skia. [Sandboxels source](https://github.com/R74nCom/sandboxels/blob/main/index.html) · [Upstream license](https://github.com/R74nCom/sandboxels/blob/main/license.txt)
+Siftwake renders the chamber with Skia. Four references informed the material and tool choices.
+
+| Game | Documented behavior | How Siftwake uses the idea |
+| --- | --- | --- |
+| Powder Game on iOS | A fan supplies wind continuously. Pressure, streamlines and thermography can be viewed separately. [Developer's tool guide](https://dan-ball.jp/en/m/dustviewer/) | Place two fans at different powers, release smoke between them and use the Air overlay to see where it goes. |
+| Falling Matter on iOS | Each pixel has a temperature. Metal and wood transfer heat at different rates, and the thermal camera reveals the difference. [Developer's App Store description](https://apps.apple.com/pl/app/falling-matter/id6816210370) | Place metal and cork near a heat source. Compare the far ends with Probe or the Heat overlay. |
+| SmellyMoo’s sand:box on Android | The developer describes more than 85 materials and drawing structures that exploit their interactions. [Google Play listing](https://play.google.com/store/apps/details?id=smellymoo.sand) | Keep the six most-used materials within reach. Group the full catalog by experiment and give each entry a reaction to try. |
+| Sandboxels on the web | Its reaction tables connect water with salt, sand and carbon dioxide. Seltzer has distinct hot and cold products. [Water reactions](https://sandboxels.wiki.gg/wiki/Water) · [Seltzer](https://sandboxels.wiki.gg/wiki/Seltzer) | Give carbonated water a finite dissolved-gas supply. Vent or shake the chamber, then use Probe to compare the remaining bubbles and local pressure. |
 
 ## User Stories
 
@@ -49,6 +56,17 @@ Sandboxels establishes that this kind of game can run client-side. Its public so
 
 ### Materials and reactions
 
+The inventory contains 56 built-ins. On a new world, the six dock keys start with Clay Dust, Baking Soda, Vinegar, Copper, Wax and Flame. A seventh fixed key opens and closes the inventory. Opening inventory pauses the world and lifts the whole cartridge, including its shell, glass and all seven keys, into its pinned header. The cartridge seats in the receiving slot as the inventory closes. Inspecting a card leaves the equipped brush alone. **Use** equips the material, and **Assign** or a hold binds it to the first empty key. If the row is full, select a replacement or cancel. Closing the inventory restores the prior playback state.
+
+| Group | Observable experiments |
+| --- | --- |
+| Weather | Slush, fog and frost change phase. Salt separates from brine on evaporation. Cool pressurized water absorbs available CO₂. Venting or agitation releases dissolved gas. Dry ice supplies finite CO₂, foam traps free gas, and a sponge stores and releases water. |
+| Chemistry | Vinegar and baking soda produce a cooling solution and CO₂. Concentrated sodium acetate crystallizes and warms. Plaster sets into warm gypsum. Wet clay dries and rewets until firing makes permanent brick. |
+| Engineering | Copper conducts heat. Tin and copper melt and solidify at different temperatures. Exposed wet iron rusts faster in brine. Wax plugs can melt and set again. Oil and cork float on water. |
+| Garden | Soil holds water as mud. Moisture feeds germination and travels through roots and stems. Leaves transpire, reeds grow near water, and damp litter decomposes into compost. |
+
+World format V3 stores 16-bit material IDs. Original materials occupy IDs 1–16, and world-local custom materials retain IDs 17–255, including legacy custom names such as Snow. New built-ins occupy IDs 257–296. ID 256 is reserved. Earlier worlds without saved bindings migrate with the classic Sand, Water, Gravel, Smoke, Wood and Flame keys, full thermal power and brush mode.
+
 | Material | Behavior the player should see |
 | --- | --- |
 | Sand | Falls into open space, slides diagonally when blocked, and forms a pile. |
@@ -70,7 +88,9 @@ Overlay a 40 × 60 air grid on the material world. Each air cell covers 4 × 4 m
 | Tool | Placement and effect |
 | --- | --- |
 | Wall | Snaps to the air grid. A wall tile blocks materials throughout its footprint and seals its air faces. Show the snapped footprint before placement. |
-| Fan | Snaps to an open air tile and applies momentum in one of four cardinal directions. With the Fan tool selected, tap an existing fan to turn it a quarter turn. Adjust fan strength continuously from 0 to 100%. |
+| Fan | Snaps to an open air tile, captures the current 0–100% strength at placement and applies momentum in one of four directions. Tap a placed fan with the Fan tool to turn it a quarter turn. |
+| Material source | A repeat tap on an equipped mobile material switches between brush and source. Place a source on an empty tile. Its stored material and radius determine what exits open neighboring cells per tick. |
+| Heat and Cool | Set the brush radius and 0–100% thermal power. Hold to apply the brush during play, or repeat-tap the tool and place a source with fixed radius and power. |
 | Wind brush | A directional stroke adds a temporary gust that decays. |
 | Pressure source | Adds air locally each tick, raising pressure in a sealed chamber. |
 | Suction source | Removes air locally each tick, lowering pressure in a sealed chamber. |
@@ -79,6 +99,8 @@ Overlay a 40 × 60 air grid on the material world. Each air cell covers 4 × 4 m
 The world edges are sealed. Placing a wall clears its footprint of loose materials and devices and cancels flow through its faces. Removing it leaves empty material space. Allow one air device per open air tile. A device occupies the air layer and lets material pass. Bound pressure and velocity so a forgotten source remains stable. The overlay shows signed pressure with a neutral midpoint and a legend. Toggling it changes only the display.
 
 ### On-phone editor and persistence
+
+Custom contacts can have inclusive minimum and maximum temperatures and signed local pressure limits. Optional heat exchange applies once when a contact transforms materials. Omitted conditions preserve the original contact-only behavior. Checkpoints include the world-local catalog, hotbar, source mode, brush and thermal settings, device payloads, per-fan strengths and particle inventories.
 
 Create and edit custom definitions in the app. The form includes display name, color, movement family, relative density on a 1–100 scale, and contact reactions. Reject blank or duplicate display names, invalid colors, non-finite or out-of-range densities, missing material references, and duplicate or reversed rules for the same pair. Explain the error beside the relevant field and preserve the draft. Commit a valid edit as one change. A new material appears in the palette immediately. Renaming or recoloring a definition preserves its ID, its reactions, and the cells already using it.
 
@@ -100,13 +122,26 @@ Reopen the last committed world paused. Gameplay and saves operate locally once 
 | Editor integrity | A custom material can be painted and can react. Renaming it preserves existing cells and rules. A reversed duplicate rule is rejected and the prior catalog still works. |
 | Restore and replay | A saved world and its restored copy produce the same next 100 ticks from identical inputs on the same runtime. Interrupt a save and reopen the previous complete snapshot. |
 
-**Physical iPhone.** Open the project in Expo Go from Windows. Use MobAI for visual inspection and Appium for repeatable touch sequences. Target the installed Expo Go host, locate tools by accessibility ID, and derive drawing coordinates from the visible canvas bounds. Verify painting, stepping, rotating a fan, opening a chamber, creating a material, and reopening a save. On Windows, the Appium XCUITest route requires a compatible device and a signed, reachable WebDriverAgent. Record the actual phone, iOS version, and automation route used. Routine checks run locally without an iOS simulator or an Xcode runner job. [Appium real-device support on non-macOS hosts](https://appium.github.io/appium-xcuitest-driver/12.22/guides/non-macos-hosts/)
+**Physical iPhone.** Open the project in Expo Go from Windows. Use Appium with XCUITest for repeatable touch sequences. Target the installed Expo Go host, locate tools by accessibility ID, and derive drawing coordinates from the visible canvas bounds. Verify painting, stepping, rotating a fan, opening a chamber, creating a material, and reopening a save. On Windows, the Appium XCUITest route requires a compatible device and a signed, reachable WebDriverAgent. Record the actual phone, iOS version, and automation route used. Routine checks run locally without an iOS simulator or an Xcode runner job. [Appium real-device support on non-macOS hosts](https://appium.github.io/appium-xcuitest-driver/12.22/guides/non-macos-hosts/)
 
-**Performance acceptance.** On the physical iPhone, run the full-size world for 60 seconds with at least half the material cells occupied, moving sand and water, smoke, a fan, and a pressure device. Target 30 simulation ticks per second and accept at least 1,770 completed ticks in that minute while the player can draw continuously. Record completed ticks, dropped or delayed frames, simulation time, and pixel upload/render time separately. Recheck the same scene with the overlay enabled. This is a proposed acceptance threshold, pending a device measurement.
+**Performance acceptance.** On a physical iPhone, save a 160 × 240 world with at least 19,200 occupied cells, moving sand and water, smoke, a fan, a pressure device and active sources. From that checkpoint, draw continuously for 60 seconds in Normal view. Reload the same checkpoint and repeat with Pressure, Air and Heat enabled. For each run, record device, iOS and build, starting occupancy, start and end tick, elapsed time, dropped or delayed frames, simulation time, and pixel upload/render time separately. Each run must complete at least 1,770 ticks in 60 seconds. Both builds tested on 21 November 2026 missed that target in both views.
+
+The isolated Expo Go 58.0.5 fixture restored the same half-filled world in memory for each run on iPhone18,2, iOS 27.2.1. It ran the native Board with a minified, non-development bundle. Appium dragged a water brush across the canvas. The timing window started at tick zero.
+
+| Build and view | Elapsed | End tick | Ticks with touch down | Frame intervals over 34 ms / observed | Longest interval | Simulation per tick | Raster per image | Skia image submission per image |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Initial, Normal | 60.435 s | 433 | 417 | 145 / 145 | 536 ms | 131.58 ms | 22.81 ms | 0.04 ms |
+| Initial, Pressure + Air + Heat | 60.120 s | 410 | 396 | 137 / 137 | 555 ms | 133.93 ms | 36.77 ms | 0.04 ms |
+| Optimized, Normal | 60.064 s | 1,474 | 1,422 | 413 / 800 | 157 ms | 38.64 ms | 2.22 ms | 0.02 ms |
+| Optimized, Pressure + Air + Heat | 60.113 s | 1,393 | 1,346 | 501 / 570 | 170 ms | 41.02 ms | 4.61 ms | 0.02 ms |
+
+Frame intervals came from the Board's animation callbacks. Raster and Skia timings cover CPU-side pixel generation and image submission. GPU completion time was unmeasured.
+
+On 21 November 2026, Appium exercised the inventory in Expo Go 58.0.5 on a physical iPhone18,2 running iOS 27.2.1. The six docked and expanded keys were 44 points high. The device exposed the full-row replacement prompt, cancellation, unbound Slush brush and source modes, and the Probe temperature, pressure and airflow readings. The world stayed at tick zero throughout these checks.
 
 ## Out of Scope
 
-Version 0.2 transports heat between materials and through the existing airflow. It excludes detailed combustion chemistry, heat-driven convection, a full Sandboxels catalog or mod loader, arbitrary user scripts, multiple save slots, cloud sharing, and multiplayer. The manual Xcode workflow packages an unsigned iPhone IPA. LiveContainer launch verification, TestFlight and App Store distribution are separate. A simulator matrix and macOS builds on every change are outside the first-version test workflow.
+The expanded solver couples heat changes to bounded pressure, convection under the current gravity, and pressure-dependent water and steam transitions. Detailed combustion chemistry, a full Sandboxels catalog or mod loader, arbitrary user scripts, multiple player save slots, cloud sharing and multiplayer remain outside scope. The manual Xcode workflow packages an unsigned iPhone IPA. LiveContainer launch verification, TestFlight and App Store distribution are separate.
 
 ## Further Notes
 

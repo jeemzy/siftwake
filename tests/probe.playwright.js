@@ -1,136 +1,154 @@
-// Exercise the same exported web game as the iOS bundle's simulation and DOM controls.
+// Probe is an inspection mode that can share one canvas contact with a thermal brush.
 async (page) => {
   const tab = (name) => page.getByRole('tab', { name, exact: true });
   const key = (name) => page.getByRole('button', { name, exact: true });
   const board = page.getByTestId('world');
-  const read = () => page.locator('.sw-readings output').allTextContents();
-  const check = (condition, message) => {
-    if (!condition) throw Error(message);
-  };
-  async function tap(x, y) {
+  const marker = page.getByTestId('probe-marker');
+  const readings = page.getByRole('group', { name: 'Probe readings' });
+  const temp = readings.getByLabel('Temperature', { exact: true });
+  function check(condition, message) { if (!condition) throw Error(message); }
+
+  async function point(x, y) {
     const r = await board.boundingBox();
-    await page.mouse.click(r.x + ((x + 0.5) * r.width) / 160, r.y + ((y + 0.5) * r.height) / 240);
+    return [r.x + (x + 0.5) * r.width / 160, r.y + (y + 0.5) * r.height / 240];
   }
+  async function tap(x, y) { await page.mouse.click(...await point(x, y)); }
+  async function pinned(x, y) {
+    const [cx, cy] = await point(x, y);
+    const r = await marker.boundingBox();
+    check(r && Math.abs(r.x + r.width / 2 - cx) < 1 &&
+      Math.abs(r.y + r.height / 2 - cy) < 1, 'Probe pin missed the contact');
+  }
+  async function waitTemp(value) {
+    await page.waitForFunction((n) =>
+      document.querySelector('.sw-readings output[aria-label=Temperature]')?.textContent === n + '°C', value);
+  }
+  async function checkThermalKey(name, selected, source) {
+    const settings = await key(name).evaluate(el => {
+      const face = el.querySelector('.sw-lcd-key-face');
+      if (!face) throw Error('Thermal key has no inset LCD face');
+      const strip = getComputedStyle(el, '::after');
+      return {
+        selected: el.getAttribute('aria-pressed') === 'true',
+        source: el.hasAttribute('data-source'),
+        face: getComputedStyle(face).backgroundColor,
+        glow: strip.content !== 'none' && strip.content !== 'normal' && Number(strip.opacity) > 0 &&
+          strip.display !== 'none' ? [strip.backgroundColor, strip.boxShadow].join(' ') : '',
+      };
+    });
+    check(settings.selected === selected && settings.source === source, name + ' selection or source state');
+    const rgb = settings.face.match(/[\d.]+/g).map(Number);
+    const ink = selected ? Math.max(...rgb.slice(0, 3)) < 55 :
+      rgb[1] > rgb[0] && rgb[1] > rgb[2] && rgb[0] > 70;
+    check(ink, name + ' key has the wrong LCD face color: ' + settings.face);
+    const color = name === 'Heat' ? 'rgb(242, 174, 88)' : 'rgb(136, 207, 255)';
+    check(settings.glow.includes(color) === source, name + ' source glow: ' + settings.glow);
+  }
+
   await page.setViewportSize({ width: 390, height: 844 });
-  await tab('Thermal').click();
-  await key('Heat').click();
-  await tap(29, 61);
-  for (let i = 0; i < 12; i++) await key('Step').click();
-  await page.getByText('Tick 12', { exact: true }).waitFor();
-  const before = await board.boundingBox();
-  // Collect frames inside the browser so a slow automation round trip cannot skip the slide.
-  await key('Probe').evaluate(async (button) => {
-    button.click();
-    const surface = document.querySelector('[data-testid=world]');
-    const cartridge = document.querySelector('.sw-cartridge');
-    const readings = document.querySelector('.sw-readings');
-    window.probeFrames = [];
-    const start = performance.now();
-    for (;;) {
-      await new Promise(requestAnimationFrame);
-      const { x, y, width, height } = surface.getBoundingClientRect();
-      const travel = new DOMMatrixReadOnly(getComputedStyle(cartridge).transform).m42;
-      window.probeFrames.push({
-        x,
-        y,
-        width,
-        height,
-        travel,
-        light: Number(getComputedStyle(readings, '::before').opacity),
-      });
-      if (performance.now() - start > 560) break;
-    }
-  });
-  const frames = await page.evaluate(() => window.probeFrames);
-  check(
-    frames.every((f) => ['x', 'y', 'width', 'height'].every((k) => f[k] === before[k])),
-    'Canvas moved during travel',
-  );
-  check(
-    frames.some((f) => f.travel > 0 && f.travel < 65),
-    'Missing cartridge travel',
-  );
-  check(
-    frames.every((f) => f.travel < 0.1 || f.light === 0),
-    'Backlight came on before seating',
-  );
-  check(frames.at(-1).light === 1 && frames.at(-1).travel === 0, 'Display did not power up');
-  check(
-    (await read()).every((v) => v.startsWith('—')),
-    'Unexpected initial sample',
-  );
-  await tap(29, 61);
-  check(
-    JSON.stringify(await read()) === JSON.stringify(['155°C', '+0.01sim', '1.54E']),
-    'Incorrect tunnel probe at tick 12: ' + (await read()),
-  );
-  await key('Step').click();
-  await page.waitForFunction(
-    () => document.querySelector('.sw-readings output').textContent !== '155°C',
-  );
-  await key('Play').click();
-  check(await key('Step').isDisabled(), 'Step enabled during playback');
-  await page.waitForFunction(
-    () => Number(document.querySelector('[data-testid=tick]').textContent.slice(5)) > 22,
-  );
-  await key('Stop').click();
   await tab('World').click();
-  for (const layer of ['Heat', 'Air', 'Pressure'])
-    await page.getByRole('checkbox', { name: layer, exact: true }).click();
-  check(
-    await page.getByRole('group', { name: 'Probe readings' }).isVisible(),
-    'Changing categories hid the probe',
-  );
   await key('Blank canvas').click();
   await tab('Thermal').click();
-  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const thermalPower = page.getByRole('spinbutton', { name: 'Thermal power', exact: true });
+  await key('Heat').waitFor();
+  await checkThermalKey('Heat', false, false);
   await key('Heat').click();
-  await page.setViewportSize({ width: 320, height: 568 });
-  await tap(0, 0);
-  await tap(159, 239);
-  const narrow = await board.boundingBox();
-  const painted = await board.screenshot();
-  await key('Probe').click();
-  check(
-    await page
-      .locator('.sw-cartridge')
-      .evaluate((e) => getComputedStyle(e).transitionDuration === '0s'),
-    'Reduced motion slide',
-  );
-  for (const [x, y] of [
-    [0, 0],
-    [159, 239],
-  ]) {
-    await tap(x, y);
-    check(
-      JSON.stringify(await read()) === JSON.stringify(['240°C', '0.00sim', '0.00']),
-      'Wrong corner or still-air reading: ' + (await read()),
-    );
-    const marker = await page.getByTestId('probe-marker').boundingBox();
-    check(
-      Math.abs(marker.x + marker.width / 2 - narrow.x - ((x + 0.5) * narrow.width) / 160) < 1,
-      'Marker x',
-    );
-    check(
-      Math.abs(marker.y + marker.height / 2 - narrow.y - ((y + 0.5) * narrow.height) / 240) < 1,
-      'Marker y',
-    );
-  }
+  await checkThermalKey('Heat', true, false);
+  await key('Heat').click();
+  await checkThermalKey('Heat', true, true);
   await key('Cool').click();
-  check(painted.equals(await board.screenshot()), 'Probing changed the paused canvas');
-  check(
-    JSON.stringify(await board.boundingBox()) === JSON.stringify(narrow),
-    'Narrow canvas shifted',
-  );
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await checkThermalKey('Cool', true, false);
+  await key('Cool').click();
+  await checkThermalKey('Cool', true, true);
+  await thermalPower.press('ArrowDown');
   await key('Probe').click();
+  await readings.waitFor();
+  check(await thermalPower.inputValue() === '99', 'Probe lost the Thermal power setting');
+  await thermalPower.press('End');
+  await checkThermalKey('Cool', false, false);
+  await page.waitForFunction(() => {
+    const fields = [...document.querySelectorAll('.sw-readings > div')];
+    return fields.length >= 3 && fields.every(field => getComputedStyle(field).opacity === '1');
+  });
+  check((await readings.locator('output').allTextContents()).every(v => v.startsWith('—')), 'Unexpected initial pin');
+  const bounds = await board.boundingBox();
+  await tap(0, 0);
+  await waitTemp(20);
+  await pinned(0, 0);
   await key('Heat').click();
-  await page.waitForTimeout(360);
-  check(
-    await page
-      .locator('.sw-readings')
-      .evaluate((e) => getComputedStyle(e, '::before').opacity === '0'),
-    'Hidden display lit',
-  );
-  return 'Numbers, motion order, fixed bounds, corner taps, overlays, playback and reduced motion passed.';
+  await checkThermalKey('Heat', true, false);
+  await key('Heat').click();
+  await checkThermalKey('Heat', true, true);
+  await key('Heat').click();
+  await pinned(0, 0);
+  await tap(159, 239);
+  await waitTemp(240);
+  await pinned(159, 239);
+  check((await readings.getByLabel('Pressure', { exact: true }).textContent()).startsWith('+1.76'), 'Paused heat pressure');
+  await key('Cool').click();
+  await checkThermalKey('Heat', false, false);
+  await key('Cool').click();
+  await checkThermalKey('Cool', true, true);
+  await key('Cool').click();
+  await pinned(159, 239);
+  await tap(159, 239);
+  await waitTemp(120);
+  await key('Probe only').click();
+  await tap(159, 239);
+  await waitTemp(120);
+  await key('Step').click();
+  await page.waitForFunction(() => {
+    const value = parseInt(document.querySelector('.sw-readings output')?.textContent, 10);
+    return value > 20 && value < 120;
+  });
+  await pinned(159, 239);
+  check(JSON.stringify(await board.boundingBox()) === JSON.stringify(bounds), 'Probe resized the canvas');
+  await key('Close probe').click();
+  await readings.waitFor({ state: 'hidden' });
+  await marker.waitFor({ state: 'detached' });
+  await key('Probe').click();
+  await readings.waitFor();
+  await key('Heat').click();
+  await key('Probe only').waitFor();
+  // Wait for the ordinary autosave while the Thermal tab still owns the screen.
+  await page.waitForFunction(() => {
+    const row = JSON.parse(localStorage.getItem('siftwake.world') ?? '[]')[0];
+    if (!row) return false;
+    const { editor } = JSON.parse(row.editor);
+    return editor.category === 'Thermal' && editor.tool === 'Heat' && editor.probeMode === true;
+  }, undefined, { timeout: 25000 });
+  await page.reload();
+  await readings.waitFor();
+  check((await temp.textContent()).startsWith('—'), 'Reload restored a stale pin');
+  await key('Play').click();
+  const livePoint = await point(80, 100);
+  await page.mouse.move(...livePoint);
+  await page.mouse.down();
+  try {
+    await page.waitForFunction(() => parseInt(document.querySelector('.sw-readings output')?.textContent, 10) > 400);
+  } finally {
+    await page.mouse.up();
+  }
+  await key('Stop').click();
+  await pinned(80, 100);
+  await key('Step').click();
+  await pinned(80, 100);
+  await tab('Materials').click();
+  await readings.waitFor({ state: 'hidden' });
+  await marker.waitFor({ state: 'detached' });
+  await tab('Thermal').click();
+  await key('Probe').click();
+  await readings.waitFor();
+  check((await temp.textContent()).startsWith('—'), 'Returning to Thermal kept an old pin');
+  await tab('Air').click();
+  await readings.waitFor({ state: 'hidden' });
+  await tab('World').click();
+  await key('Save').click();
+  await page.getByText('World saved.', { exact: true }).waitFor();
+  const saved = await page.evaluate(() => JSON.parse(JSON.parse(localStorage.getItem('siftwake.world'))[0].editor).editor);
+  check(saved.category === 'World' && !saved.probeMode && saved.tool !== 'Probe', 'Inspect-only tool leaked to another tab');
+  await page.reload();
+  await key('Save').waitFor();
+  check(await marker.count() === 0 && !await readings.isVisible(), 'World reopened in Probe mode');
+  return 'Verified inspect-only, Heat/Cool at the pin, held playback, authored and restored Thermal mode, and clean tab exits.';
 };

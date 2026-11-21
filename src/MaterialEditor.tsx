@@ -3,9 +3,10 @@ import { Button } from '@/registry/hardware/ui/button';
 import {
   builtinMaterials,
   families,
+  ruleLimits,
   self,
   unset,
-  type ContactRule,
+  type ContactRuleDraft,
   type Material,
   type MaterialDraft,
   type MaterialErrors,
@@ -64,6 +65,7 @@ export default function MaterialEditor({ material, catalog, onCommit, onClose }:
   const [pending, setPending] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
+  const focusError = useRef(false);
   useEffect(() => {
     const previous = document.activeElement;
     const panel = dialog.current!;
@@ -75,8 +77,12 @@ export default function MaterialEditor({ material, catalog, onCommit, onClose }:
     };
   }, []);
   useEffect(() => {
-    if (Object.keys(errors).length)
-      dialog.current?.querySelector<HTMLElement>('[aria-invalid="true"], [role="alert"]')?.focus();
+    if (!focusError.current) return;
+    focusError.current = false;
+    const field = dialog.current?.querySelector<HTMLElement>('[aria-invalid="true"], [role="alert"]');
+    const details = field?.closest('details');
+    if (details) details.open = true;
+    field?.focus();
   }, [errors]);
 
   function change<K extends keyof MaterialDraft>(key: K, value: MaterialDraft[K]) {
@@ -84,7 +90,11 @@ export default function MaterialEditor({ material, catalog, onCommit, onClose }:
     setErrors((errors) => ({ ...errors, [key]: undefined, form: undefined }));
   }
 
-  function changeRule<K extends keyof ContactRule>(index: number, key: K, value: ContactRule[K]) {
+  function changeRule<K extends keyof ContactRuleDraft>(
+    index: number,
+    key: K,
+    value: ContactRuleDraft[K],
+  ) {
     setDraft((draft) => ({
       ...draft,
       rules: draft.rules.map((rule, i) => (i === index ? { ...rule, [key]: value } : rule)),
@@ -101,9 +111,12 @@ export default function MaterialEditor({ material, catalog, onCommit, onClose }:
     setPending(true);
     try {
       const result = await onCommit(material?.id ?? null, draft);
-      if ('errors' in result) setErrors(result.errors);
-      else onClose();
+      if ('errors' in result) {
+        focusError.current = true;
+        setErrors(result.errors);
+      } else onClose();
     } catch {
+      focusError.current = true;
       setErrors({ form: 'The material could not be applied. Try again.' });
     } finally {
       setPending(false);
@@ -139,6 +152,23 @@ export default function MaterialEditor({ material, catalog, onCommit, onClose }:
       </Field>
     );
   };
+  function quantity(index: number, key: keyof typeof ruleLimits, label: string) {
+    const id = `sw-rule-${index}-${key}`;
+    const error = errors.rules?.[index]?.[key];
+    const [min, max] = ruleLimits[key];
+    return (
+      <Field id={id} label={label} error={error}>
+        <input
+          {...inputProps(id, error)}
+          value={draft.rules[index][key] ?? ''}
+          placeholder={`${min} to ${max}`}
+          onChange={(e) => changeRule(index, key, e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </Field>
+    );
+  }
 
   return (
     <dialog
@@ -239,6 +269,24 @@ export default function MaterialEditor({ material, catalog, onCommit, onClose }:
                     {outputs(index, 'own', 'This material becomes')}
                     {outputs(index, 'other', 'Contact material becomes')}
                   </div>
+                  <details open={Object.keys(ruleLimits).some((key) =>
+                    rule[key as keyof typeof ruleLimits] !== undefined) || undefined}>
+                    <summary style={{ minHeight: 44, alignContent: 'center', cursor: 'pointer' }}>
+                      Temperature, pressure and heat
+                    </summary>
+                    <p>Bounds apply at this material and include both endpoints. Leave unused bounds blank.</p>
+                    <div className="sw-outputs">
+                      {quantity(index, 'minTemperature', 'Minimum temperature (°C)')}
+                      {quantity(index, 'maxTemperature', 'Maximum temperature (°C)')}
+                      {quantity(index, 'minPressure', 'Minimum pressure (sim)')}
+                      {quantity(index, 'maxPressure', 'Maximum pressure (sim)')}
+                    </div>
+                    {quantity(index, 'heatExchange', 'Heat exchange (Δ°C)')}
+                    <p>
+                      Positive values heat this material after a reaction. Negative values cool it.
+                      If it disappears, the exchange applies to the contact material or the air.
+                    </p>
+                  </details>
                   <Button
                     type="button"
                     disabled={pending}

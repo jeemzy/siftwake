@@ -26,8 +26,8 @@ test('fan sweep transports smoke, then sand, then gravel', () => {
   function displacement(m, power) {
     const w = new World();
     floor(w, 84);
-    w.paint('Fan', 20, 80);
     w.strength = power;
+    w.paint('Fan', 20, 80);
     w.paint(m, 34, 83, 0);
     advance(w, 14);
     return center(w, M[m]).x - 34;
@@ -41,8 +41,8 @@ test('a packed pile diverts a plume upward and erasure restores its path', () =>
   function plume(pile, erase) {
     const w = new World();
     floor(w, 96);
-    w.paint('Fan', 20, 86);
     w.strength = 0.7;
+    w.paint('Fan', 20, 86);
     if (pile)
       for (let y = 0; y < 17; y++)
         for (let x = 50 + y; x <= 84 - y; x++) w.paint('Gravel', x, 95 - y, 0);

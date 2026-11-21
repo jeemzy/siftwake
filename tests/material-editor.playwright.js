@@ -4,7 +4,22 @@ async (page, legacy) => {
   const button = (name) => page.getByRole('button', exact(name));
   const tab = (name) => page.getByRole('tab', exact(name));
   const board = page.getByTestId('world');
-  const palette = page.getByLabel('Custom material', exact('Custom material'));
+  const inventory = page.getByRole('dialog', exact('Material inventory'));
+  const catalog = inventory.getByRole('region', exact('Material catalog'));
+  async function inspect(name) {
+    await button('Inventory').click();
+    await inventory.getByLabel('Search materials').fill(name);
+    await catalog.getByRole('button', exact(name)).click();
+  }
+  async function use(name) {
+    await inspect(name);
+    await inventory.getByRole('button', exact('Use')).click();
+    await inventory.waitFor({ state: 'hidden' });
+  }
+  async function closeInventory() {
+    await button('Close inventory').click();
+    await inventory.waitFor({ state: 'hidden' });
+  }
   const initial = await board.boundingBox();
   const check = (condition, message) => {
     if (!condition) throw Error(message);
@@ -67,9 +82,10 @@ async (page, legacy) => {
   await tab('World').click();
   await button('Blank canvas').click();
   await tab('Materials').click();
-  await button('Fine').click();
+  await page.getByRole('slider', exact('Brush size')).press('Home');
+  await button('Inventory').click();
   await button('New material').click();
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /^(New|Edit) material$/ });
   await dialog.waitFor();
   check(JSON.stringify(await bounds()) === JSON.stringify(initial), 'Editor moved the canvas');
   check(
@@ -97,16 +113,30 @@ async (page, legacy) => {
   await field('Density (1–100)').fill('65');
   await field('Touches').selectOption({ label: 'Water' });
   await field('Contact material becomes').selectOption({ label: 'Glass' });
+  const conditions = dialog.getByText('Temperature, pressure and heat', { exact: true });
+  await conditions.click();
+  await field('Minimum temperature (°C)').fill('10');
+  await field('Maximum temperature (°C)').fill('5');
+  await field('Minimum pressure (sim)').fill('-12');
+  await field('Maximum pressure (sim)').fill('+12');
+  await field('Heat exchange (Δ°C)').fill('-0,5');
+  await conditions.click();
+  await button('Create material').click();
+  await dialog.getByText('Maximum must be at least the minimum.').waitFor();
+  await page.waitForFunction(() => document.activeElement?.id === 'sw-rule-0-maxTemperature');
+  check((await field('Heat exchange (Δ°C)').inputValue()) === '-0,5', 'Heat exchange draft lost');
+  await field('Maximum temperature (°C)').fill('30');
   await button('Create material').click();
   await dialog.waitFor({ state: 'hidden' });
-  check(
-    (await palette.locator(':checked').textContent()) === 'Lacquer',
-    'New material not selected',
-  );
+  await catalog.getByRole('button', exact('Lacquer')).waitFor();
+  await closeInventory();
   await paint(80, 90);
   await verifyPixel(80, 90, 'lacquer');
+  await inspect('Lacquer');
   await button('Edit material').click();
   await dialog.waitFor();
+  check((await field('Heat exchange (Δ°C)').inputValue()) === '-0.5', 'Heat exchange lost on edit');
+  check((await field('Minimum pressure (sim)').inputValue()) === '-12', 'Pressure lost on edit');
   await field('Name').fill('Green lacquer');
   await field('Color').fill('#45DD64');
   await button('Add reaction').click();
@@ -121,18 +151,16 @@ async (page, legacy) => {
   await button('Remove reaction 2').click();
   await button('Apply changes').click();
   await dialog.waitFor({ state: 'hidden' });
-  check(
-    (await palette.locator(':checked').textContent()) === 'Green lacquer',
-    'Rename did not update palette',
-  );
+  await catalog.getByRole('button', exact('Green lacquer')).waitFor();
+  await closeInventory();
   await verifyPixel(80, 90, 'green');
-  await button('Water').click();
+  await use('Water');
   await paint(83, 90);
   await verifyPixel(82, 90, 'water');
   await button('Step').click();
   await verifyPixel(82, 90, 'glass');
 
-  await palette.selectOption({ label: 'Green lacquer' });
+  await use('Green lacquer');
   await tab('World').click();
   await button('Save').click();
   await page.getByText('World saved.', exact('World saved.')).waitFor();
@@ -142,11 +170,9 @@ async (page, legacy) => {
   await verifyPixel(80, 90, 'green');
   await verifyPixel(82, 90, 'glass');
   await tab('Materials').click();
-  check(
-    (await palette.locator(':checked').textContent()) === 'Green lacquer',
-    'Selected material was not restored',
-  );
-  await button('Water').click();
+  await paint(64, 90);
+  await verifyPixel(64, 90, 'green');
+  await use('Water');
   await paint(77, 90);
   await button('Step').click();
   await verifyPixel(78, 90, 'glass');

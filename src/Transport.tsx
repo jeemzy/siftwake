@@ -1,24 +1,33 @@
-import { Button } from '@ui-sdk/react/button';
+type Action = () => Promise<void>;
 
-type Props = {
+export function SideKey({ label, symbol, disabled, pressed, onPress, title }: {
+  label: string;
+  symbol: string;
+  disabled?: boolean;
+  pressed?: boolean;
+  onPress: Action;
+  title?: string;
+}) {
+  return (
+    <button type="button" className="sw-key" disabled={disabled} aria-pressed={pressed}
+      title={title} onClick={() => void onPress()}>
+      <span aria-hidden="true">{symbol}</span>
+      {label}
+      <i aria-hidden="true" data-kit="code-copy" />
+    </button>
+  );
+}
+
+export default function Transport({ paused, onPlayback, onStep }: {
   paused: boolean;
-  onPlayback: () => Promise<void>;
-  onStep: () => Promise<void>;
-};
-
-export default function Transport({ paused, onPlayback, onStep }: Props) {
+  onPlayback: Action;
+  onStep: Action;
+}) {
   return (
     <div className="sw-keys" role="group" aria-label="Playback">
-      <Button className="sw-key" aria-pressed={!paused} onClick={() => void onPlayback()}>
-        <span aria-hidden>{paused ? '▶' : '■'}</span>
-        {paused ? 'Play' : 'Stop'}
-        <i aria-hidden data-kit="code-copy" />
-      </Button>
-      <Button className="sw-key" disabled={!paused} onClick={() => void onStep()}>
-        <span aria-hidden>▸│</span>
-        Step
-        <i aria-hidden data-kit="code-copy" />
-      </Button>
+      <SideKey label={paused ? 'Play' : 'Stop'} symbol={paused ? '▶' : '■'}
+        pressed={!paused} onPress={onPlayback} />
+      <SideKey label="Step" symbol="▸│" disabled={!paused} onPress={onStep} />
     </div>
   );
 }

@@ -1,0 +1,117 @@
+.sw-inventory-socket:has(.sw-sliding-inventory) { height: 50px; }
+.sw-sliding-inventory .sw-inventory-sheet {
+  position: relative;
+  width: 100%;
+}
+.sw-sliding-inventory.sw-inventory:modal {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  padding: 0;
+  margin: 0;
+  display: block;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+.sw-sliding-inventory:modal .sw-inventory-sheet {
+  position: absolute;
+  inset: max(4px, calc((100% - 800px) / 2)) 0;
+  margin-inline: auto;
+  width: min(638px, calc(100% - 8px));
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid #92958c;
+  border-radius: 8px;
+  background: var(--tex-matte), var(--metal, #e2e2dd);
+  box-shadow: inset 0 1px #fff, 0 3px 12px #20241c55;
+}
+.sw-slot-carrier {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  transform-origin: top left;
+}
+.sw-slot-glass.sw-lcd-pane {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0;
+  height: 100%;
+  padding: 0;
+}
+.sw-slot-glass.sw-lcd-pane[hidden] { display: none; }
+.sw-slot-carrier .sw-hotbar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-column: span 6;
+  min-width: 0;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.sw-slot-carrier .sw-slot-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font: 600 clamp(10px, 2.7vw, 12px)/1.05 var(--mono);
+  letter-spacing: -.03em;
+  text-align: center;
+}
+.sw-slot-glass .sw-lcd-key {
+  width: 100%;
+  height: 100%;
+}
+.sw-slot-glass .sw-lcd-key-face { padding-inline: 1px; }
+.sw-pixel-grid {
+  width: 15px;
+  height: 15px;
+  color: inherit;
+  background:
+    linear-gradient(to right, currentColor 3px, transparent 3px) 0 0 / 6px 100%;
+  mask: linear-gradient(to bottom, #000 3px, transparent 3px) 0 0 / 100% 6px;
+}
+.sw-inventory-sheet .sw-inventory-actions { flex-wrap: wrap; }
+.sw-inventory-sheet .sw-inspector { padding-right: 58px; }
+.sw-inventory-sheet .sw-compose-key[data-kit='button']:not(#_) {
+  --key-color: #396d5e;
+  --key-color-edge: #26483d;
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  border-radius: 9px;
+  color: #f4f8f4;
+}
+.sw-inventory-sheet .sw-compose-key:active { translate: 0 1px; }
+.sw-sliding-inventory .sw-catalog { scroll-padding-bottom: 50px; }
+@media (max-width: 420px) {
+  .sw-slot-glass .sw-lcd-key { padding-inline: 1px; }
+  .sw-slot-glass .sw-lcd-key-face { padding-inline: 0; }
+  .sw-slot-glass .sw-slot-name { font-size: 10px; }
+}
+@media (max-width: 350px) {
+  .sw-sliding-inventory:modal .sw-inventory-sheet {
+    width: 100%;
+    padding-inline: 3px;
+  }
+}
+@media (max-height: 420px) {
+  .sw-inventory-sheet .sw-inspector { padding: 4px 4px 52px; }
+}

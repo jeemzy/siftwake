@@ -1,8 +1,22 @@
-import React, { useRef, type PointerEvent } from 'react';
+import React, { useEffect, useRef, type PointerEvent } from 'react';
 import type { StrokeProps } from './StrokeSurface';
 
 export default function StrokeSurface({ sample, end }: StrokeProps) {
   const active = useRef<number | null>(null);
+  useEffect(() => {
+    function cancel() {
+      if (active.current === null) return;
+      active.current = null;
+      end(true);
+    }
+    function visibility() { if (document.hidden) cancel(); }
+    window.addEventListener('blur', cancel);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      window.removeEventListener('blur', cancel);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, [end]);
   function point(event: PointerEvent<HTMLDivElement>, start: boolean) {
     const rect = event.currentTarget.getBoundingClientRect();
     const samples =
@@ -15,7 +29,7 @@ export default function StrokeSurface({ sample, end }: StrokeProps) {
     if (event.pointerId !== active.current) return;
     if (event.type === 'pointerup') point(event, false);
     active.current = null;
-    end();
+    end(event.type !== 'pointerup');
   }
   return (
     <div

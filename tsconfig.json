@@ -1,9 +1,26 @@
 {
   "extends": "expo/tsconfig.base",
+  "include": [
+    "*.tsx",
+    "*.ts",
+    "*.js",
+    "src/**/*",
+    "vendor/**/*",
+    "scripts/**/*",
+    "tests/**/*"
+  ],
   "compilerOptions": {
     "strict": true,
     "allowImportingTsExtensions": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
-    "paths": { "@/registry/*": ["./vendor/spec-01/registry/*"] }
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
+    "paths": {
+      "@/registry/*": [
+        "./vendor/spec-01/registry/*"
+      ]
+    }
   }
 }
