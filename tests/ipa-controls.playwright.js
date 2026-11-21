@@ -478,6 +478,7 @@ async (page) => {
     await check('Pressure').click();
     await check('Air').click();
     await page.getByRole('tab', { name: 'Thermal', exact: true }).click();
+    await cartridge.getByRole('group', { name: 'Thermal tools', exact: true }).waitFor();
     const pressureKey = page.getByText('Blue · low　Amber · high', { exact: true });
     await page.evaluate(() => document.fonts.ready);
     const thermalLegend = await pressureKey.boundingBox();
@@ -497,6 +498,7 @@ async (page) => {
     }
     await checkMaximum(knob);
     await page.getByRole('tab', { name: 'Air', exact: true }).click();
+    await cartridge.getByRole('group', { name: 'Air tools', exact: true }).waitFor();
     const motionSwitch = page.getByRole('switch', { name: 'Motion', exact: true });
     await motionSwitch.waitFor();
     await checkMaximum(page.getByRole('spinbutton', { name: 'Fan strength' }));
