@@ -585,6 +585,8 @@ body:has(.sw-dock) {
 @media (max-width: 370px) {
   .sw-face { --dial-size: 56px; }
   .sw-dial-row { gap: 2px; }
+  .sw-dial-row:has([data-kit='switch']) { justify-content: space-between; }
+  .sw-dial-row [data-kit='knob']:not(#_):not(#_) { column-gap: 1px; }
   .sw-dial-row [data-kit='switch-row']:not(#_):not(#_) { padding-inline: 17px; }
   .sw-readings output { font-size: 12px; }
   .sw-readings span { font-size: 8px; }
