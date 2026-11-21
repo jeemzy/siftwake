@@ -1,5 +1,4 @@
 import {
-  M,
   contactKey,
   editMaterial,
   firstCustom,
@@ -9,7 +8,8 @@ import {
   type MaterialDraft,
   type MaterialResult,
 } from './materials.ts';
-export { M } from './materials.ts';
+import { M } from './materialIds.ts';
+export { M } from './materialIds.ts';
 import type { MotionInput } from './motion.ts';
 import { builtinById, builtinMaterials } from './builtinRegistry.ts';
 import { clearWallPath, outlets, percent, SOURCE } from './devices.ts';
@@ -55,7 +55,7 @@ type Direction = readonly [number, number];
 const screenDown: Direction = [0, 1];
 const builtinsForMovement: (typeof builtinMaterials[number] | Material)[] = [];
 for (const material of builtinMaterials) builtinsForMovement[material.id] = material;
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const clamp = (v: number, lo: number, hi: number) => v < lo ? lo : v > hi ? hi : v;
 
 const ambient = 20;
 const materialCount = Math.max(...builtinMaterials.map(m => m.id)) + 1;
@@ -312,7 +312,8 @@ export class World {
   }
 
   private random() {
-    this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0;
+    // The largest 32-bit seed times this multiplier, plus the increment, is below 2^53.
+    this.seed = (this.seed * 1664525 + 1013904223) >>> 0;
     return this.seed / 4294967296;
   }
 
@@ -834,33 +835,38 @@ export class World {
         airDelta[j] += flux;
       }
     }
-    for (let strip = 0; strip < occupiedStrips.length; strip++) {
+    const flame = M.Flame, width = W, stripCount = occupiedStrips.length;
+    for (let strip = 0; strip < stripCount; strip++) {
       if (!occupiedStrips[strip]) {
         strip = occupiedStrips.indexOf(1, strip + 1);
         if (strip < 0) break;
       }
       const start = strip * 4, end = start + 4, t = cellTile[start];
       if (!heatTiles[t]) continue;
-      const rightLimit = end % W === 0 ? end - 1 : end;
+      const rightLimit = end % width === 0 ? end - 1 : end;
       const airTemp = air[t];
       for (let i = start; i < end; i++) {
         const m = cells[i];
         if (!m) continue;
         const current = temp[i];
         if (current !== airTemp) {
-          const toAir = (current - airTemp) * (m === M.Flame ? 0.065 : 0.009);
+          const toAir = (current - airTemp) * (m === flame ? 0.065 : 0.009);
           delta[i] -= toAir;
           airDelta[t] += toAir / 16;
         }
         const conduct = contactConductivity[m];
-        const right = i + 1, below = i + W;
-        if (i < rightLimit && cells[right] && current !== temp[right]) {
-          const flow = (current - temp[right]) * conduct[cells[right]];
+        const right = i + 1, below = i + width;
+        const rightId = i < rightLimit ? cells[right] : 0;
+        const rightTemp = rightId ? temp[right] : current;
+        if (current !== rightTemp) {
+          const flow = (current - rightTemp) * conduct[rightId];
           delta[i] -= flow;
           delta[right] += flow;
         }
-        if (below < N && cells[below] && current !== temp[below]) {
-          const flow = (current - temp[below]) * conduct[cells[below]];
+        const belowId = below < N ? cells[below] : 0;
+        const belowTemp = belowId ? temp[below] : current;
+        if (current !== belowTemp) {
+          const flow = (current - belowTemp) * conduct[belowId];
           delta[i] -= flow;
           delta[below] += flow;
         }
