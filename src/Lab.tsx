@@ -20,6 +20,7 @@ const panelProps = {
 } as const;
 const panelTop = 5;
 const panelBottom = 25;
+const dockHeight = 241;
 
 function checkpointKey({ world, editor: { motionEnabled = false, ...editor } }: Session) {
   return JSON.stringify([world.ticks, world.edits, world.strength, editor, motionEnabled]);
@@ -227,7 +228,7 @@ export default function Lab() {
             onLayout={nativeHost ? event => setClipHeight(event.nativeEvent.layout.height) : undefined}>
             {/* Resize the input and clipping bounds while keeping WKWebView's backing surface stationary. */}
             <View style={nativeHost ? [s.nativePanelSurface, { height: viewportHeight }] : s.webPanelSurface}>
-              <HardwareDock
+              {(!nativeHost || viewportHeight > 0) && <HardwareDock
                 inventoryViewportHeight={nativeHost ? viewportHeight : undefined}
                 probeMode={probeMode}
                 onProbeMode={async (enabled) => {
@@ -341,7 +342,7 @@ export default function Lab() {
                 onViewChange={async (view, enabled) => {
                   if (!locked.current) setCamera((previous) => changeLayer(previous, view, enabled));
                 }}
-              />
+              />}
             </View>
           </View>
           <Text accessibilityRole="header" style={s.logo}>
@@ -380,8 +381,8 @@ const s = StyleSheet.create({
     gap: 6,
   },
   logo: { color: '#63655f', textAlign: 'center', fontSize: 11, lineHeight: 14, fontWeight: '600' },
-  dock: { height: 237 },
-  dockPanel: { position: 'absolute', left: 8, right: 8, bottom: panelBottom, height: 237 },
+  dock: { height: dockHeight },
+  dockPanel: { position: 'absolute', left: 8, right: 8, bottom: panelBottom, height: dockHeight },
   nativePanelSurface: { position: 'absolute', bottom: 0, left: 0, right: 0 },
   nativeClip: { overflow: 'hidden' },
   webPanelSurface: { flex: 1 },

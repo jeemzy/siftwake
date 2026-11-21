@@ -111,7 +111,7 @@ async (page) => {
               emit('$$native_action_result', { actionId, uid, result });
               emit('$$props', { names, props });
               setTimeout(() => {
-                host.parentElement.style.height = (open ? props.inventoryViewportHeight : 237) + 'px';
+                host.parentElement.style.height = (open ? props.inventoryViewportHeight : 241) + 'px';
                 // The native clip changes before its onLayout acknowledgement reaches the WebView.
                 if (fixedViewport) setTimeout(() => {
                   props.expanded = open;
@@ -188,7 +188,7 @@ async (page) => {
       board.dataset.presses = '0';
       board.onpointerdown = () => { board.dataset.presses = String(Number(board.dataset.presses) + 1); };
       const clip = document.createElement('div');
-      clip.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:25px;height:237px;overflow:hidden';
+      clip.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:25px;height:241px;overflow:hidden';
       clip.style.width = (Math.min(innerWidth, 660) - (innerWidth <= 350 ? 0 : 16)) + 'px';
       const frame = document.createElement('iframe');
       frame.id = frame.name = 'inventory-webview';
@@ -226,7 +226,7 @@ async (page) => {
         window.travelFrames.push({
           time: performance.now(), phase: dialog.dataset.phase, height: innerHeight, clipHeight: clip.height,
           layoutAcknowledged: !!document.querySelector('.sw-dock[data-expanded]'), hostTop: hostRect.top,
-          modal: dialog.matches(':modal'), y: hostRect.top + rect.top,
+          modal: dialog.matches(':modal'), y: hostRect.top + rect.top, clipTop: clip.top,
           sheetY: hostRect.top + sheet.getBoundingClientRect().top, hostBottom: hostRect.bottom,
           visible: shell.checkVisibility({ visibilityProperty: true, opacityProperty: true }) &&
             hostRect.top + rect.top >= clip.top - 1 && hostRect.top + rect.bottom <= clip.bottom + 1,
@@ -259,7 +259,7 @@ async (page) => {
       return last.phase === 'opening' && last.y < window.travelFrames[i - 1].y - 8;
     }, reopened);
     const reclosed = await reverseInFlight();
-    await frame.waitForFunction(() => frameElement.parentElement.clientHeight === 237 &&
+    await frame.waitForFunction(() => frameElement.parentElement.clientHeight === 241 &&
       !document.querySelector('.sw-dock[data-expanded]') && document.querySelector('.sw-inventory').dataset.phase === 'docked');
     await checkBoardInput(2);
     const samples = await frame.evaluate(async () => {
@@ -269,30 +269,32 @@ async (page) => {
     });
     await page.locator('#inventory-webview').evaluate(el => el.remove());
     const dockY = samples[0].y;
-    const opened = samples.find(s => s.phase === 'open' && s.clipHeight > 237);
+    if (dockY - samples[0].clipTop < 3)
+      throw Error('The docked LCD bezel touches the native clipping edge');
+    const opened = samples.find(s => s.phase === 'open' && s.clipHeight > 241);
     if (!opened) throw Error('Inventory never arrived in its expanded WebView');
     const headerInset = opened.y - opened.sheetY;
     for (const [i, s] of samples.entries()) {
       if (layout === 'clipped') {
         if (s.height !== opened.clipHeight || s.hostTop !== samples[0].hostTop)
           throw Error('Opening or closing resized the embedded WebView backing surface');
-        if (s.modal && (!s.layoutAcknowledged || s.clipHeight === 237))
+        if (s.modal && (!s.layoutAcknowledged || s.clipHeight === 241))
           throw Error('Inventory began travelling before its native clip expanded and acknowledged layout');
       }
-      const expected = s.clipHeight === 237 || !s.modal ? dockY : Math.min(dockY, s.sheetY + headerInset);
+      const expected = s.clipHeight === 241 || !s.modal ? dockY : Math.min(dockY, s.sheetY + headerInset);
       if (!s.same || !s.visible || Math.abs(s.y - expected) > 1.5)
         throw Error('Inventory jumped or lost its shell on frame ' + i + ': ' +
           JSON.stringify({ expected, ...s }));
     }
     const opening = samples.slice(0, openEnd);
-    const firstExpanded = opening.find(s => s.modal && s.clipHeight > 237);
+    const firstExpanded = opening.find(s => s.modal && s.clipHeight > 241);
     if (!firstExpanded || firstExpanded.sheetY < firstExpanded.hostBottom - 32)
       throw Error('The first expanded inventory frame skipped the entrance from below the dock: ' +
         JSON.stringify(firstExpanded));
     const closing = samples.slice(reclosed).filter(s => s.phase === 'closing');
     for (const [stage, frames] of [['pickup', opening], ['dropoff', closing]]) {
-      const approaching = frames.filter(s => s.modal && s.clipHeight > 237 && s.sheetY > dockY + 8);
-      const joint = frames.filter(s => s.modal && s.clipHeight > 237 && s.y < dockY - 8 && s.y > opened.y + 8);
+      const approaching = frames.filter(s => s.modal && s.clipHeight > 241 && s.sheetY > dockY + 8);
+      const joint = frames.filter(s => s.modal && s.clipHeight > 241 && s.y < dockY - 8 && s.y > opened.y + 8);
       if (approaching.length < 2 || Math.max(...approaching.map(s => s.sheetY)) -
           Math.min(...approaching.map(s => s.sheetY)) < 8 || joint.length < 2)
         throw Error('Missing visible sheet approach or joint cartridge travel during ' + stage + ': ' +

@@ -7,6 +7,7 @@ body:has(.sw-dock) {
   --mono: 'Spec Mono', Menlo, monospace !important;
   width: 100%;
   flex: 1 0 100%;
+  padding-top: 4px;
 }
 .sw-dock,
 .sw-dock * {
@@ -15,7 +16,7 @@ body:has(.sw-dock) {
 .sw-dock[data-native-host], .sw-dock[data-expanded] {
   position: absolute;
   inset: auto 0 0;
-  height: 237px;
+  height: 241px;
 }
 .sw-editor input,
 .sw-editor select {
